@@ -1,0 +1,197 @@
+"""
+Intake stage: parse document → LLM extraction → reconciliation gate → CompanyFinancials.
+
+LLM is called ONCE for extraction with a JSON-schema-enforced response.
+If reconciliation fails, we retry once with the errors surfaced to the LLM.
+Max 2 LLM calls total for this stage.
+"""
+from __future__ import annotations
+import json
+import logging
+from backend.schema.models import CompanyFinancials, ReconciliationResult
+from backend.analysis.reconciliation import reconcile
+from backend.intake.schema_prompt import EXTRACTION_SCHEMA
+from backend.intake import parsers
+from backend.llm import router
+
+log = logging.getLogger(__name__)
+
+MAX_RETRIES = 1  # total retries after first failure = 1 (2 LLM calls max)
+
+
+def _build_extraction_prompt(document_text: str, company_hint: str = "") -> str:
+    hint = f"\nCompany hint: {company_hint}" if company_hint else ""
+    return f"""Extract the financial statements from the following document into structured JSON.{hint}
+
+Rules:
+- All monetary values in the original currency (typically EUR for German companies).
+- Use the exact year labels as period keys (e.g. "2023", "2022").
+- If a line item is not present in the source, use null.
+- For German HGB filings, cash flow statement is often absent — set cash_flow_statement to null in that case.
+- Identify the company name, currency (default EUR), NACE code (if stated), and reporting standard (HGB or IFRS).
+- If NACE code is not stated, use "C" (manufacturing) as default.
+
+Document:
+---
+{document_text[:12000]}
+---
+
+Return ONLY valid JSON. No markdown, no explanation."""
+
+
+def _build_retry_prompt(document_text: str, errors: list, attempt: int) -> str:
+    error_summary = "\n".join(
+        f"  - Period {e.period}: {e.check} — expected {e.expected:,.0f}, got {e.actual:,.0f} (delta {e.delta:+,.0f})"
+        for e in errors
+    )
+    return f"""Your previous extraction had reconciliation errors (accounting identities do not hold):
+{error_summary}
+
+Please re-extract the financial statements, correcting these discrepancies.
+Check that: gross_profit = revenue - cogs, ebit = gross_profit - operating_expenses,
+net_income = ebt - income_tax, current_assets = cash + AR + inventory + other_current_assets,
+total_assets = current_assets + fixed_assets + other_noncurrent_assets,
+current_liabilities = accounts_payable + short_term_debt + other_current_liabilities,
+total_liabilities = current_liabilities + long_term_debt + other_noncurrent_liabilities,
+total_assets = total_liabilities + total_equity.
+
+Document (re-reading):
+---
+{document_text[:12000]}
+---
+
+Return ONLY valid JSON matching the required schema."""
+
+
+class ExtractionResult:
+    def __init__(self, financials: CompanyFinancials, reconciliation: ReconciliationResult,
+                 llm_calls: int, raw_extracted: dict):
+        self.financials = financials
+        self.reconciliation = reconciliation
+        self.llm_calls = llm_calls
+        self.raw_extracted = raw_extracted
+
+    @property
+    def passed(self) -> bool:
+        return self.reconciliation.passed
+
+
+async def extract_financials(filename: str, content: bytes,
+                              company_hint: str = "") -> ExtractionResult:
+    """
+    Full intake pipeline:
+      1. Parse document (PDF/Excel/CSV) → text
+      2. LLM extraction with JSON-schema enforcement
+      3. Reconciliation gate
+      4. If fails: one retry with errors surfaced
+      5. Return ExtractionResult (caller decides whether to proceed on soft failure)
+    """
+    log.info("Intake: parsing %s", filename)
+    document_text = parsers.parse_document(filename, content)
+    log.info("Intake: extracted %d chars from document", len(document_text))
+
+    llm_calls = 0
+    last_recon: ReconciliationResult | None = None
+    last_raw: dict = {}
+
+    for attempt in range(MAX_RETRIES + 1):
+        if attempt == 0:
+            prompt = _build_extraction_prompt(document_text, company_hint)
+        else:
+            prompt = _build_retry_prompt(document_text, last_recon.errors, attempt)
+
+        log.info("Intake: LLM extraction attempt %d", attempt + 1)
+        raw = await router.extract(prompt, EXTRACTION_SCHEMA)
+        llm_calls += 1
+        last_raw = raw
+
+        # Map null values: replace None in dicts with 0.0 where required, keep as-is for optional
+        financials = _build_financials(raw)
+        recon = reconcile(financials)
+        last_recon = recon
+
+        if recon.passed:
+            log.info("Intake: reconciliation passed on attempt %d", attempt + 1)
+            return ExtractionResult(financials, recon, llm_calls, raw)
+
+        log.warning("Intake: reconciliation failed (attempt %d): %d errors", attempt + 1, len(recon.errors))
+
+    # Return anyway with failed reconciliation — caller decides
+    log.error("Intake: reconciliation still failing after %d attempts", llm_calls)
+    return ExtractionResult(_build_financials(last_raw), last_recon, llm_calls, last_raw)
+
+
+def _build_financials(raw: dict) -> CompanyFinancials:
+    """Convert raw extracted dict to CompanyFinancials, handling nulls gracefully."""
+    def _clean_dict(d: dict | None) -> dict:
+        """Replace None values with 0.0 in period dicts (required fields)."""
+        if not d:
+            return {}
+        return {k: (v if v is not None else 0.0) for k, v in d.items()}
+
+    def _optional_dict(d: dict | None) -> dict:
+        """Keep None values for optional fields like D&A."""
+        if not d:
+            return {}
+        return {k: v for k, v in d.items()}
+
+    is_raw = raw.get("income_statement", {})
+    bs_raw = raw.get("balance_sheet", {})
+    cf_raw = raw.get("cash_flow_statement")
+
+    income = {
+        "periods": is_raw.get("periods", []),
+        "revenue":              _clean_dict(is_raw.get("revenue")),
+        "cost_of_goods_sold":   _clean_dict(is_raw.get("cost_of_goods_sold")),
+        "gross_profit":         _clean_dict(is_raw.get("gross_profit")),
+        "operating_expenses":   _clean_dict(is_raw.get("operating_expenses")),
+        "ebit":                 _clean_dict(is_raw.get("ebit")),
+        "interest_expense":     _clean_dict(is_raw.get("interest_expense")),
+        "ebt":                  _clean_dict(is_raw.get("ebt")),
+        "income_tax":           _clean_dict(is_raw.get("income_tax")),
+        "net_income":           _clean_dict(is_raw.get("net_income")),
+        "depreciation_amortization": _optional_dict(is_raw.get("depreciation_amortization", {})),
+        "ebitda":               _optional_dict(is_raw.get("ebitda", {})),
+    }
+
+    balance = {
+        "periods": bs_raw.get("periods", []),
+        "cash":                       _clean_dict(bs_raw.get("cash")),
+        "accounts_receivable":        _clean_dict(bs_raw.get("accounts_receivable")),
+        "inventory":                  _clean_dict(bs_raw.get("inventory")),
+        "other_current_assets":       _clean_dict(bs_raw.get("other_current_assets")),
+        "current_assets":             _clean_dict(bs_raw.get("current_assets")),
+        "fixed_assets":               _clean_dict(bs_raw.get("fixed_assets")),
+        "other_noncurrent_assets":    _clean_dict(bs_raw.get("other_noncurrent_assets")),
+        "total_assets":               _clean_dict(bs_raw.get("total_assets")),
+        "accounts_payable":           _clean_dict(bs_raw.get("accounts_payable")),
+        "short_term_debt":            _clean_dict(bs_raw.get("short_term_debt")),
+        "other_current_liabilities":  _clean_dict(bs_raw.get("other_current_liabilities")),
+        "current_liabilities":        _clean_dict(bs_raw.get("current_liabilities")),
+        "long_term_debt":             _clean_dict(bs_raw.get("long_term_debt")),
+        "other_noncurrent_liabilities": _clean_dict(bs_raw.get("other_noncurrent_liabilities")),
+        "total_liabilities":          _clean_dict(bs_raw.get("total_liabilities")),
+        "share_capital":              _clean_dict(bs_raw.get("share_capital")),
+        "retained_earnings":          _clean_dict(bs_raw.get("retained_earnings")),
+        "total_equity":               _clean_dict(bs_raw.get("total_equity")),
+    }
+
+    data = {
+        "company_name": raw.get("company_name", "Unknown GmbH"),
+        "currency":     raw.get("currency", "EUR"),
+        "nace_code":    raw.get("nace_code", "C"),
+        "reporting_standard": raw.get("reporting_standard", "HGB"),
+        "income_statement": income,
+        "balance_sheet": balance,
+    }
+
+    if cf_raw:
+        data["cash_flow_statement"] = {
+            "periods": cf_raw.get("periods", []),
+            "operating_cash_flow": _clean_dict(cf_raw.get("operating_cash_flow")),
+            "investing_cash_flow": _clean_dict(cf_raw.get("investing_cash_flow")),
+            "financing_cash_flow": _clean_dict(cf_raw.get("financing_cash_flow")),
+            "free_cash_flow":      _optional_dict(cf_raw.get("free_cash_flow", {})),
+        }
+
+    return CompanyFinancials(**data)
