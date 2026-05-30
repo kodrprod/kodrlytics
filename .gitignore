@@ -4,3 +4,4 @@ backend/__pycache__
 .pytest_cache
 .env
 dev.db
+frontend/node_modules/
