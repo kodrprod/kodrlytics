@@ -22,14 +22,17 @@ class RatioResult:
 class AnalysisResult:
     company_name: str
     ratios: list[RatioResult] = field(default_factory=list)
+    raw_values: dict[str, float] = field(default_factory=dict)  # key raw financial values for grounding
     # Convenience accessors
     def by_id(self, finding_id: str) -> Optional[RatioResult]:
         return next((r for r in self.ratios if r.finding_id == finding_id), None)
     def for_period(self, period: str) -> list[RatioResult]:
         return [r for r in self.ratios if r.period == period]
     def all_values(self) -> dict[str, float]:
-        """Returns {finding_id: value} for all derivable ratios — used by grounding gate."""
-        return {r.finding_id: r.value for r in self.ratios if not r.not_derivable and r.value is not None}
+        """Returns {finding_id: value} for all derivable ratios and raw financials — used by grounding gate."""
+        result = {r.finding_id: r.value for r in self.ratios if not r.not_derivable and r.value is not None}
+        result.update(self.raw_values)
+        return result
 
 
 def _safe_div(numerator: Optional[float], denominator: Optional[float]) -> Optional[float]:
@@ -59,6 +62,27 @@ def run_analysis(financials: CompanyFinancials) -> AnalysisResult:
     cf = financials.cash_flow_statement
 
     periods = [p.label for p in is_.periods]
+
+    # ── Raw financial values (for grounding gate) ──────────────────────────────
+    for lbl in periods:
+        for field_name in ("revenue", "cost_of_goods_sold", "gross_profit",
+                           "operating_expenses", "ebit", "interest_expense",
+                           "ebt", "income_tax", "net_income",
+                           "depreciation_amortization", "ebitda"):
+            val = getattr(is_, field_name, {}).get(lbl)
+            if val is not None:
+                result.raw_values[f"raw.{field_name}.{lbl}"] = float(val)
+    bs_periods = [p.label for p in bs.periods]
+    for lbl in bs_periods:
+        for field_name in ("cash", "accounts_receivable", "inventory",
+                           "current_assets", "fixed_assets", "total_assets",
+                           "accounts_payable", "short_term_debt",
+                           "current_liabilities", "long_term_debt",
+                           "total_liabilities", "share_capital",
+                           "retained_earnings", "total_equity"):
+            val = getattr(bs, field_name, {}).get(lbl)
+            if val is not None:
+                result.raw_values[f"raw.{field_name}.{lbl}"] = float(val)
 
     # ── Profitability ──────────────────────────────────────────────────────────
 

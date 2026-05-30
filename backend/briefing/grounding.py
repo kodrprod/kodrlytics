@@ -152,11 +152,13 @@ def check_grounding(prose: str, analysis: AnalysisResult,
 
 
 NUMBER_RE = re.compile(r"""
+    (?<!\d)                        # not preceded by digit (prevent matching fragments of larger numbers)
     (?:€\s*)?                      # optional euro sign
     -?                             # optional negative
     \d{1,3}(?:[.,]\d{3})*         # integer part with optional thousand separators
     (?:[.,]\d+)?                   # optional decimal
     (?:\s*%|\s*[xX]|\s*days?)?    # optional unit
+    (?!\d)                         # not followed by digit
 """, re.VERBOSE)
 
 TOLERANCE = 0.015  # 1.5% — allows for prose rounding
@@ -182,6 +184,9 @@ def _extract_numbers_simple(text: str) -> list[tuple[str, float]]:
     for m in NUMBER_RE.finditer(text):
         raw = m.group().strip()
         if not raw:
+            continue
+        # Skip pure 4-digit years (19xx or 20xx)
+        if re.fullmatch(r"(?:19|20)\d{2}", raw):
             continue
         val = _normalize_simple(raw)
         if val != val:  # NaN check
