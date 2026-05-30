@@ -1,0 +1,62 @@
+{
+  "nace_prefix": "G",
+  "description": "Wholesale & Retail Trade (NACE G) — German Mittelstand, source: Bundesbank/BACH 2022",
+  "metrics": {
+    "gross_margin": {
+      "median": 28.0, "p25": 18.0, "p75": 40.0,
+      "unit": "%", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "ebit_margin": {
+      "median": 3.2, "p25": 1.0, "p75": 6.5,
+      "unit": "%", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "net_margin": {
+      "median": 2.1, "p25": 0.5, "p75": 4.8,
+      "unit": "%", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "roe": {
+      "median": 13.0, "p25": 5.0, "p75": 25.0,
+      "unit": "%", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "roa": {
+      "median": 3.5, "p25": 1.0, "p75": 7.5,
+      "unit": "%", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "current_ratio": {
+      "median": 1.60, "p25": 1.10, "p75": 2.30,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "quick_ratio": {
+      "median": 0.90, "p25": 0.55, "p75": 1.40,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "dso": {
+      "median": 35.0, "p25": 20.0, "p75": 52.0,
+      "unit": "days", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "dpo": {
+      "median": 32.0, "p25": 20.0, "p75": 50.0,
+      "unit": "days", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "inventory_days": {
+      "median": 42.0, "p25": 25.0, "p75": 65.0,
+      "unit": "days", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "asset_turnover": {
+      "median": 1.55, "p25": 1.10, "p75": 2.20,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "debt_to_equity": {
+      "median": 1.80, "p25": 0.90, "p75": 3.20,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "interest_coverage": {
+      "median": 5.0, "p25": 2.0, "p75": 11.0,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    },
+    "net_debt_ebitda": {
+      "median": 2.5, "p25": 1.0, "p75": 4.5,
+      "unit": "x", "source": "Bundesbank BACH 2022", "year": 2022
+    }
+  }
+}
