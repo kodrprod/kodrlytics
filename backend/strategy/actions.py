@@ -64,22 +64,43 @@ def build_actions_from_flags(
             ))
 
         elif flag.flag_type in ("margin_erosion", "low_gross_margin"):
-            conservative = company_val + (median - company_val) * 0.5
-            actions.append(ImprovementAction(
-                action_type=ActionType.IMPROVE_EBIT_MARGIN,
-                finding_id=flag.finding_id,
-                current_value=company_val,
-                target_base=median,
-                target_optimistic=p75,
-                target_conservative=conservative,
-                unit="%",
-                description=f"Improve EBIT margin from {company_val:.1f}% to {median:.1f}% (peer median)",
-                assumptions=[
+            if company_val >= median:
+                # Company is above peers but declining — target is to arrest/reverse the trend.
+                # Optimistic: recover 2pp above current; base: hold current; conservative: limit decline by 1pp.
+                target_optimistic = round(company_val + 2.0, 1)
+                target_base = round(company_val, 1)
+                target_conservative = round(company_val - 1.0, 1)
+                description = (f"Arrest EBIT margin decline (currently {company_val:.1f}% — "
+                                f"above peer median {median:.1f}% but declining 3 years)")
+                assumptions = [
+                    f"Company EBIT margin ({company_val:.1f}%) exceeds peer median ({median:.1f}%) but is in a 3-year decline",
+                    "Base case: stabilise margin at current level via opex discipline",
+                    "Optimistic: recover 2 percentage points through pricing or cost actions",
+                    "Conservative: limit further decline to 1 percentage point",
+                    "Projection is illustrative; not a guarantee",
+                ]
+            else:
+                # Company is below peers — target improvement toward median and p75.
+                target_base = median
+                target_optimistic = p75
+                target_conservative = round(company_val + (median - company_val) * 0.5, 1)
+                description = f"Improve EBIT margin from {company_val:.1f}% to {median:.1f}% (peer median)"
+                assumptions = [
                     f"Peer median EBIT margin: {median:.1f}% (source: {bm.source})",
                     f"Peer top-quartile EBIT margin: {p75:.1f}%",
                     "Assumes revenue held constant; improvement via cost reduction",
                     "Projection is illustrative; not a guarantee",
-                ],
+                ]
+            actions.append(ImprovementAction(
+                action_type=ActionType.IMPROVE_EBIT_MARGIN,
+                finding_id=flag.finding_id,
+                current_value=company_val,
+                target_base=target_base,
+                target_optimistic=target_optimistic,
+                target_conservative=target_conservative,
+                unit="%",
+                description=description,
+                assumptions=assumptions,
             ))
 
         elif flag.flag_type == "high_leverage":
