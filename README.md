@@ -61,8 +61,8 @@ Open http://localhost:5173. Upload a financial statement (or use the included sa
 | Variable | Default | Description |
 |---|---|---|
 | `OPENROUTER_API_KEY` | — | Required for LLM stages |
-| `MODEL_NAME` | `meta-llama/llama-3.1-8b-instruct:free` | Primary LLM |
-| `FALLBACK_MODEL` | `mistralai/mistral-7b-instruct:free` | Used on primary failure |
+| `MODEL_NAME` | `google/gemma-4-31b-it:free` | Primary LLM |
+| `FALLBACK_MODEL` | `google/gemma-4-26b-a4b-it:free` | Used on primary failure |
 | `DATA_MODE` | `test` | `test` allows free models; `real` blocks them |
 
 ## Running tests (no API key needed)
