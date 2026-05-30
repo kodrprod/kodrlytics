@@ -80,12 +80,21 @@ async def extract_financials(filename: str, content: bytes,
                               company_hint: str = "") -> ExtractionResult:
     """
     Full intake pipeline:
-      1. Parse document (PDF/Excel/CSV) → text
-      2. LLM extraction with JSON-schema enforcement
-      3. Reconciliation gate
-      4. If fails: one retry with errors surfaced
-      5. Return ExtractionResult (caller decides whether to proceed on soft failure)
+      1. If .json: try direct parse as CompanyFinancials (no LLM needed)
+      2. Otherwise: parse document → LLM extraction → reconciliation gate
+      3. If reconciliation fails: one retry with errors surfaced
     """
+    # Fast path: JSON files that already match the canonical schema skip LLM entirely
+    if filename.lower().endswith(".json"):
+        try:
+            raw = json.loads(content.decode("utf-8"))
+            financials = _build_financials(raw)
+            recon = reconcile(financials)
+            log.info("Intake: loaded %s directly from JSON (no LLM call)", filename)
+            return ExtractionResult(financials, recon, llm_calls=0, raw_extracted=raw)
+        except Exception as e:
+            log.warning("Intake: direct JSON parse failed (%s), falling back to LLM", e)
+
     log.info("Intake: parsing %s", filename)
     document_text = parsers.parse_document(filename, content)
     log.info("Intake: extracted %d chars from document", len(document_text))
