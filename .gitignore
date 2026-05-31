@@ -5,5 +5,5 @@ backend/__pycache__
 .env
 dev.db
 frontend/node_modules/
-reports/*.pdf
+reports/
 jobs.db
