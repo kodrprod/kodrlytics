@@ -174,7 +174,7 @@ async def run_background_job(job_id: str, filename: str, content: bytes) -> None
 
         from datetime import datetime
         report_obj = AnalysisReport(
-            title=f"Financial Analysis Report — {', '.join(c.company_name for c in company_reports[:3])}"
+            title=f"Financial Analysis Report -- {', '.join(c.company_name for c in company_reports[:3])}"
                   + (f" +{len(company_reports)-3} more" if len(company_reports) > 3 else ""),
             generated_at=datetime.now().strftime("%d %B %Y, %H:%M UTC"),
             source_file=filename,

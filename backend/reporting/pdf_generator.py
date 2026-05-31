@@ -219,7 +219,7 @@ def generate_pdf(report: AnalysisReport, job_id: str) -> Path:
     # Split long titles
     title_lines = [report.title[i:i+50] for i in range(0, len(report.title), 50)]
     for line in title_lines:
-        pdf.cell(0, 10, line, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 10, _safe(line), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(10)
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(100, 100, 100)
