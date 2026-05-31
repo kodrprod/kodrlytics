@@ -1,4 +1,4 @@
-"""6 concrete pipeline rooms — 20 workers each, full dataset context."""
+"""6 concrete pipeline rooms — data-aware worker counts, full dataset context."""
 from __future__ import annotations
 import logging
 from pathlib import Path
@@ -91,6 +91,8 @@ class IntakeRoom(Room):
         if ds:
             years = ds.years
             company = ds.company_name
+
+            # ── Core tasks: always valuable regardless of which data buckets exist ──
             tasks = [
                 Task("intake-overview", "Dataset Overview & Scale",
                      f"Analyse the full dataset for {company}: {ds.total_files} files, "
@@ -98,105 +100,122 @@ class IntakeRoom(Room):
                      f"Scale, comprehensiveness, analytical potential. Most valuable data? Gaps?",
                      [f"{company} construction company Germany",
                       "company dataset financial analysis"]),
-                Task("intake-annual", "Annual Reports Quality",
-                     f"Analyse {len(ds.annual_reports)} annual reports ({', '.join(sorted(ds.annual_reports))}). "
-                     f"Statements present? Reporting standard? Completeness across years?",
-                     ["German Jahresbericht HGB financial statements",
-                      "annual report data quality"]),
-                Task("intake-accounting", "Accounting Journals",
-                     f"Analyse {len(ds.accounting_journals)} accounting journals. "
-                     f"Transaction detail, cost categories, analytical value?",
-                     ["Buchungsjournal accounting journal Germany",
-                      "general ledger analysis"]),
-                Task("intake-payroll", "Payroll & HR Data",
-                     f"Assess {len(ds.payroll_journals)} years of payroll data. "
-                     f"Headcount, salary data, workforce trends accessible?",
-                     ["German Lohnjournal payroll analysis",
-                      "workforce cost HR data"]),
-                Task("intake-compliance", "Compliance Reports",
-                     f"Assess {len(ds.compliance_reports)} compliance reports. "
-                     f"Areas covered, recurring issues, regulatory risks?",
-                     ["German compliance report GmbH",
-                      "compliance risk assessment construction"]),
-                Task("intake-projects", "Project Portfolio",
-                     f"Analyse project portfolio: {len(ds.project_reports)} projects. "
-                     f"Project mix, long vs short term, profitability data available?",
-                     ["construction project portfolio Germany",
-                      "project profitability reporting"]),
-                Task("intake-invoices", "Invoice & Revenue Data",
-                     f"Assess invoices across {len(ds.invoices)} years. "
-                     f"Customer detail, revenue patterns, average invoice sizes?",
-                     ["accounts receivable invoice analysis",
-                      "customer concentration revenue"]),
-                Task("intake-contracts", "Contracts & Legal",
-                     f"Review {len(ds.contracts)} contracts. "
-                     f"Contract types, financial obligations, concentration risks?",
-                     ["contract analysis financial obligations Germany",
-                      "legal document risk assessment"]),
-                Task("intake-minutes", "Meeting Minutes",
-                     f"Analyse {len(ds.meeting_minutes)} meeting minutes. "
-                     f"Strategic decisions, management concerns, correlation with financials?",
-                     ["board meeting minutes strategic decisions",
-                      "management meeting financial correlation"]),
-                Task("intake-qa", "Quality Assurance",
-                     f"Assess {len(ds.qa_reports)} QA reports. "
-                     f"Operational quality issues, recurring problems, cost of quality?",
-                     ["quality assurance construction",
-                      "QA cost operational efficiency"]),
-                Task("intake-timeline", "15-Year Data Coherence",
-                     f"Assess coherence across {len(years)} years for {company}. "
-                     f"Gaps, format changes, inconsistencies? Best-covered years?",
-                     [f"{company} business history",
-                      "longitudinal financial data quality"]),
-                Task("intake-crossref", "Cross-Document Consistency",
-                     f"Check consistency between sources for {company}. "
-                     f"Do annual reports match journals? Payroll vs financials?",
-                     ["financial statement cross-reference",
-                      "audit data consistency"]),
                 Task("intake-sectors", "Business Model Analysis",
                      f"Characterise {company}'s business model from documents. "
                      f"Sectors, B2B/B2C, public/private, domestic/export?",
                      [f"{company} construction GmbH business model Germany",
                       "German construction business segments"]),
+                Task("intake-timeline", "15-Year Data Coherence",
+                     f"Assess coherence across {len(years)} years for {company}. "
+                     f"Gaps, format changes, inconsistencies? Best-covered years?",
+                     [f"{company} business history",
+                      "longitudinal financial data quality"]),
                 Task("intake-risks", "Initial Risk Flags",
                      f"Identify top 5 preliminary risk signals for {company} "
                      f"from intake analysis. Red flags before deep analysis?",
                      ["financial risk early warning signals",
                       "preliminary risk assessment"]),
-                Task("intake-value", "High-Value Analysis Opportunities",
-                     f"Identify top 5 most valuable analysis opportunities "
-                     f"in the {company} dataset. Unique data combinations?",
-                     ["financial dataset analysis opportunities",
-                      "data-driven business intelligence"]),
-                Task("intake-seasonal", "Seasonality & Revenue Cycles",
-                     f"Identify seasonal patterns in {company}'s business. "
-                     f"Are invoices, costs, or headcount concentrated in certain months/quarters? "
-                     f"Revenue seasonality vs construction sector norms?",
-                     ["construction seasonality Germany",
-                      "revenue cycle seasonal patterns"]),
                 Task("intake-macro", "Macro-Economic Context",
                      f"Frame {company}'s 15-year history ({years[0] if years else '?'}-{years[-1] if years else '?'}) "
                      f"against major macro events: 2008 crisis, COVID-2020, 2022 construction slowdown, "
                      f"German housing market shifts. Which events show in data?",
                      ["German construction market 2010-2024",
                       "macroeconomic impact German SME"]),
-                Task("intake-digital", "Digitalisation & Technology Signals",
+                Task("intake-value", "High-Value Analysis Opportunities",
+                     f"Identify top 5 most valuable analysis opportunities "
+                     f"in the {company} dataset. Unique data combinations?",
+                     ["financial dataset analysis opportunities",
+                      "data-driven business intelligence"]),
+            ]
+
+            # ── Annual reports: include only when present ──────────────────────
+            if ds.annual_reports:
+                tasks.append(Task("intake-annual", "Annual Reports Quality",
+                     f"Analyse {len(ds.annual_reports)} annual reports ({', '.join(sorted(ds.annual_reports))}). "
+                     f"Statements present? Reporting standard? Completeness across years?",
+                     ["German Jahresbericht HGB financial statements",
+                      "annual report data quality"]))
+                tasks.append(Task("intake-crossref", "Cross-Document Consistency",
+                     f"Check consistency between sources for {company}. "
+                     f"Do annual reports match journals? Payroll vs financials?",
+                     ["financial statement cross-reference",
+                      "audit data consistency"]))
+
+            # ── Data-conditional tasks: only spawn when source data exists ─────
+            if ds.accounting_journals:
+                tasks.append(Task("intake-accounting", "Accounting Journals",
+                     f"Analyse {len(ds.accounting_journals)} accounting journals. "
+                     f"Transaction detail, cost categories, analytical value?",
+                     ["Buchungsjournal accounting journal Germany",
+                      "general ledger analysis"]))
+            if ds.payroll_journals:
+                tasks.append(Task("intake-payroll", "Payroll & HR Data",
+                     f"Assess {len(ds.payroll_journals)} years of payroll data. "
+                     f"Headcount, salary data, workforce trends accessible?",
+                     ["German Lohnjournal payroll analysis",
+                      "workforce cost HR data"]))
+            if ds.compliance_reports:
+                tasks.append(Task("intake-compliance", "Compliance Reports",
+                     f"Assess {len(ds.compliance_reports)} compliance reports. "
+                     f"Areas covered, recurring issues, regulatory risks?",
+                     ["German compliance report GmbH",
+                      "compliance risk assessment construction"]))
+            if ds.project_reports:
+                tasks.append(Task("intake-projects", "Project Portfolio",
+                     f"Analyse project portfolio: {len(ds.project_reports)} projects. "
+                     f"Project mix, long vs short term, profitability data available?",
+                     ["construction project portfolio Germany",
+                      "project profitability reporting"]))
+            if ds.invoices:
+                tasks.append(Task("intake-invoices", "Invoice & Revenue Data",
+                     f"Assess invoices across {len(ds.invoices)} years. "
+                     f"Customer detail, revenue patterns, average invoice sizes?",
+                     ["accounts receivable invoice analysis",
+                      "customer concentration revenue"]))
+            if ds.contracts:
+                tasks.append(Task("intake-contracts", "Contracts & Legal",
+                     f"Review {len(ds.contracts)} contracts. "
+                     f"Contract types, financial obligations, concentration risks?",
+                     ["contract analysis financial obligations Germany",
+                      "legal document risk assessment"]))
+            if ds.meeting_minutes:
+                tasks.append(Task("intake-minutes", "Meeting Minutes",
+                     f"Analyse {len(ds.meeting_minutes)} meeting minutes. "
+                     f"Strategic decisions, management concerns, correlation with financials?",
+                     ["board meeting minutes strategic decisions",
+                      "management meeting financial correlation"]))
+            if ds.qa_reports:
+                tasks.append(Task("intake-qa", "Quality Assurance",
+                     f"Assess {len(ds.qa_reports)} QA reports. "
+                     f"Operational quality issues, recurring problems, cost of quality?",
+                     ["quality assurance construction",
+                      "QA cost operational efficiency"]))
+
+            # ── Supplementary tasks: derive from annual reports / general docs ─
+            if ds.invoices or ds.accounting_journals:
+                tasks.append(Task("intake-seasonal", "Seasonality & Revenue Cycles",
+                     f"Identify seasonal patterns in {company}'s business. "
+                     f"Are invoices, costs, or headcount concentrated in certain months/quarters? "
+                     f"Revenue seasonality vs construction sector norms?",
+                     ["construction seasonality Germany",
+                      "revenue cycle seasonal patterns"]))
+            tasks.append(Task("intake-digital", "Digitalisation & Technology Signals",
                      f"Look for technology and digitalisation signals in {company}'s documents. "
                      f"Any IT investments, software costs, digital project references, BIM mentions?",
                      ["construction digitalisation Germany BIM",
-                      "Mittelstand digital transformation costs"]),
-                Task("intake-esg", "ESG & Sustainability Signals",
+                      "Mittelstand digital transformation costs"]))
+            tasks.append(Task("intake-esg", "ESG & Sustainability Signals",
                      f"Identify ESG and sustainability signals in {company}'s documents. "
                      f"Environmental fines, energy reporting, carbon mentions, social commitments?",
                      ["German construction ESG sustainability reporting",
-                      "GmbH environmental compliance requirements"]),
-                Task("intake-credit", "Credit & Banking Relationship Signals",
+                      "GmbH environmental compliance requirements"]))
+            if ds.contracts or ds.meeting_minutes or ds.annual_reports:
+                tasks.append(Task("intake-credit", "Credit & Banking Relationship Signals",
                      f"Identify banking and credit relationship signals for {company}. "
                      f"Loan documents, bank references, credit lines, covenant mentions "
                      f"in contracts or meeting minutes?",
                      ["German Mittelstand bank financing",
-                      "GmbH credit facilities construction"]),
-            ]
+                      "GmbH credit facilities construction"]))
         else:
             prev = doc[:800]
             tasks = [
@@ -294,6 +313,36 @@ class ExtractionRoom(Room):
                                   f"Accounting errors: {errs}. Rounding or material? Impact?",
                                   ["financial reconciliation accounting identity"]))
 
+            # ── Financial derivative tasks: always relevant when financials extracted ──
+            tasks += [
+                Task("extract-ebitda", "EBITDA & Cash EBITDA",
+                     "Compute EBITDA for all periods. EBITDA margin evolution, "
+                     "difference from net income, D&A as proxy for capex intensity.",
+                     ["EBITDA margin construction Germany",
+                      "cash EBITDA calculation"]),
+                Task("extract-working-capital", "Working Capital Cycle",
+                     "Extract working capital components across all periods. "
+                     "DSO, DIO, DPO, cash conversion cycle, WC as % revenue. Trend?",
+                     ["working capital cycle construction",
+                      "cash conversion cycle Germany"]),
+                Task("extract-capex", "Capital Expenditure Analysis",
+                     "Extract capex patterns: fixed asset changes + D&A proxy. "
+                     "Capex/revenue ratio, maintenance vs growth capex split, "
+                     "asset intensity over time.",
+                     ["capex construction company Germany",
+                      "capital expenditure intensity"]),
+                Task("extract-tax", "Tax Rate & Deferred Tax",
+                     "Effective tax rate evolution across years. "
+                     "German trade tax + corporate tax, deferred tax assets/liabilities.",
+                     ["German corporate tax rate GmbH",
+                      "effective tax rate analysis"]),
+                Task("extract-provisions", "Provisions & Contingent Liabilities",
+                     "Identify provisions and contingent liabilities: warranty reserves, "
+                     "litigation provisions, pension obligations, environmental liabilities.",
+                     ["provisions contingent liabilities HGB",
+                      "construction warranty reserves Germany"]),
+            ]
+
         if ds:
             if ds.accounting_journals:
                 tasks.append(Task("extract-journals", "Accounting Journal Extraction",
@@ -344,76 +393,6 @@ class ExtractionRoom(Room):
                                   f"Rework costs, defect rates, warranty claims, operational loss.",
                                   ["quality cost of poor quality Germany",
                                    "construction rework defect cost"]))
-
-        # Ensure extraction always has meaningful tasks regardless of data availability
-        base_count = len(tasks)
-        if base_count < 20:
-            extras = [
-                Task("extract-ebitda", "EBITDA & Cash EBITDA",
-                     "Compute EBITDA for all periods. EBITDA margin evolution, "
-                     "difference from net income, D&A as proxy for capex intensity.",
-                     ["EBITDA margin construction Germany",
-                      "cash EBITDA calculation"]),
-                Task("extract-working-capital", "Working Capital Cycle",
-                     "Extract working capital components across all periods. "
-                     "DSO, DIO, DPO, cash conversion cycle, WC as % revenue. Trend?",
-                     ["working capital cycle construction",
-                      "cash conversion cycle Germany"]),
-                Task("extract-capex", "Capital Expenditure Analysis",
-                     "Extract capex patterns: fixed asset changes + D&A proxy. "
-                     "Capex/revenue ratio, maintenance vs growth capex split, "
-                     "asset intensity over time.",
-                     ["capex construction company Germany",
-                      "capital expenditure intensity"]),
-                Task("extract-revenue-bridge", "Revenue Bridge Analysis",
-                     "Build a revenue bridge year-over-year: volume, price, mix, "
-                     "new vs lost customers, market share changes.",
-                     ["revenue bridge analysis",
-                      "revenue growth decomposition"]),
-                Task("extract-cost-bridge", "Cost Structure Bridge",
-                     "Build cost bridge: material, labour, overhead, D&A per year. "
-                     "Cost per unit of revenue. Inflation pass-through.",
-                     ["cost structure analysis construction",
-                      "operating leverage cost bridge"]),
-                Task("extract-leverage-detail", "Detailed Leverage Analysis",
-                     "Full debt schedule: maturity, fixed vs floating rate, secured vs "
-                     "unsecured, covenant analysis. Net debt evolution.",
-                     ["debt maturity schedule German GmbH",
-                      "leverage covenant analysis"]),
-                Task("extract-equity-value", "Equity Value Indicators",
-                     "Book equity vs implied fair value. Retained earnings accumulation, "
-                     "book value per implied share, equity growth rate.",
-                     ["equity value book value German GmbH",
-                      "shareholder value creation"]),
-                Task("extract-tax", "Tax Rate & Deferred Tax",
-                     "Effective tax rate evolution across years. "
-                     "German trade tax + corporate tax, deferred tax assets/liabilities.",
-                     ["German corporate tax rate GmbH",
-                      "effective tax rate analysis"]),
-                Task("extract-intercompany", "Intercompany & Related Party",
-                     "Identify any intercompany transactions, related-party balances, "
-                     "owner loans, dividend payments. Arm's-length terms?",
-                     ["intercompany transactions German GmbH",
-                      "related party transactions construction"]),
-                Task("extract-provisions", "Provisions & Contingent Liabilities",
-                     "Identify provisions and contingent liabilities: warranty reserves, "
-                     "litigation provisions, pension obligations, environmental liabilities.",
-                     ["provisions contingent liabilities HGB",
-                      "construction warranty reserves Germany"]),
-                Task("extract-off-balance", "Off-Balance Sheet & Leases",
-                     "Identify off-balance sheet items: operating leases, factoring, "
-                     "guarantee obligations, uncommitted facilities. True leverage?",
-                     ["off-balance sheet construction Germany",
-                      "operating lease obligations HGB"]),
-                Task("extract-pensions", "Pension & Long-Term Employee Obligations",
-                     "Identify pension and long-term employee obligations: "
-                     "defined benefit liabilities, anniversary bonuses, partial retirement schemes. "
-                     "Actuarial assumptions, funding status, cash impact.",
-                     ["pension obligations HGB German GmbH",
-                      "Rückstellungen employee benefits Germany"]),
-            ]
-            for extra in extras[:20 - base_count]:
-                tasks.append(extra)
 
         if not tasks:
             tasks.append(Task("extract-fail", "Extraction Failed",
