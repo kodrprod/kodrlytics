@@ -255,44 +255,42 @@ function ManagerOffice({ room, active }: { room: RoomInfo; active: boolean }) {
 // ── Task board ────────────────────────────────────────────────────────────────
 
 function TaskBoard({ room }: { room: RoomInfo }) {
-  const tasks = room.workers.slice(0, 12)
-  if (!tasks.length) return null
+  if (!room.workers.length) return null
+  const done = room.workers.filter(w => w.status === 'done').length
   return (
     <div style={{
       background: '#111', border: `1px solid #333`,
       borderRadius: 4, padding: '8px 10px',
-      minWidth: 150, flexShrink: 0,
+      minWidth: 160, flexShrink: 0,
+      display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ fontSize: 8, color: ORANGE, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 6 }}>
-        TASK BOARD
+      <div style={{ fontSize: 8, color: ORANGE, fontWeight: 700, letterSpacing: '0.12em', marginBottom: 4 }}>
+        TASK BOARD <span style={{ color: '#555', fontWeight: 400 }}>{done}/{room.workers.length}</span>
       </div>
-      {tasks.map(w => (
-        <div key={w.worker_id} style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          marginBottom: 3,
-        }}>
-          <div style={{
-            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-            background: STATUS_COLOR[w.status],
-            boxShadow: w.status === 'working' || w.status === 'learning'
-              ? `0 0 4px ${STATUS_COLOR[w.status]}` : 'none',
-          }} />
-          <div style={{
-            fontSize: 7.5,
-            color: w.status === 'done' ? '#444' : '#BBB',
-            textDecoration: w.status === 'done' ? 'line-through' : 'none',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            maxWidth: 110,
+      <div style={{ overflowY: 'auto', maxHeight: 280, flex: 1 }}>
+        {room.workers.map(w => (
+          <div key={w.worker_id} style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            marginBottom: 2.5,
           }}>
-            {w.task_title}
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+              background: STATUS_COLOR[w.status],
+              boxShadow: w.status === 'working' || w.status === 'learning'
+                ? `0 0 4px ${STATUS_COLOR[w.status]}` : 'none',
+            }} />
+            <div style={{
+              fontSize: 7,
+              color: w.status === 'done' ? '#444' : w.status === 'idle' ? '#555' : '#BBB',
+              textDecoration: w.status === 'done' ? 'line-through' : 'none',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              maxWidth: 115,
+            }}>
+              {w.task_title}
+            </div>
           </div>
-        </div>
-      ))}
-      {room.workers.length > 12 && (
-        <div style={{ fontSize: 7, color: '#555', marginTop: 2 }}>
-          +{room.workers.length - 12} more...
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   )
 }
@@ -356,7 +354,7 @@ function RoomFloor({ room }: { room: RoomInfo }) {
       {/* Main office floor */}
       <div style={{
         display: 'flex', gap: 12,
-        minHeight: room.workers.length > 0 ? 200 : 80,
+        minHeight: room.workers.length > 15 ? 340 : room.workers.length > 0 ? 200 : 80,
       }}>
 
         {/* Worker desks area */}
@@ -391,7 +389,7 @@ function RoomFloor({ room }: { room: RoomInfo }) {
             /* Worker grid */
             <div style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${Math.min(room.workers.length, 5)}, 1fr)`,
+              gridTemplateColumns: `repeat(${room.workers.length <= 4 ? room.workers.length : room.workers.length <= 12 ? 4 : 5}, 1fr)`,
               gap: '12px 8px',
               justifyItems: 'center',
             }}>

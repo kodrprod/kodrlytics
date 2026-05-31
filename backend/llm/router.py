@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 
 log = logging.getLogger(__name__)
 

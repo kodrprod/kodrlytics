@@ -168,6 +168,34 @@ class IntakeRoom(Room):
                      f"in the {company} dataset. Unique data combinations?",
                      ["financial dataset analysis opportunities",
                       "data-driven business intelligence"]),
+                Task("intake-seasonal", "Seasonality & Revenue Cycles",
+                     f"Identify seasonal patterns in {company}'s business. "
+                     f"Are invoices, costs, or headcount concentrated in certain months/quarters? "
+                     f"Revenue seasonality vs construction sector norms?",
+                     ["construction seasonality Germany",
+                      "revenue cycle seasonal patterns"]),
+                Task("intake-macro", "Macro-Economic Context",
+                     f"Frame {company}'s 15-year history ({years[0] if years else '?'}-{years[-1] if years else '?'}) "
+                     f"against major macro events: 2008 crisis, COVID-2020, 2022 construction slowdown, "
+                     f"German housing market shifts. Which events show in data?",
+                     ["German construction market 2010-2024",
+                      "macroeconomic impact German SME"]),
+                Task("intake-digital", "Digitalisation & Technology Signals",
+                     f"Look for technology and digitalisation signals in {company}'s documents. "
+                     f"Any IT investments, software costs, digital project references, BIM mentions?",
+                     ["construction digitalisation Germany BIM",
+                      "Mittelstand digital transformation costs"]),
+                Task("intake-esg", "ESG & Sustainability Signals",
+                     f"Identify ESG and sustainability signals in {company}'s documents. "
+                     f"Environmental fines, energy reporting, carbon mentions, social commitments?",
+                     ["German construction ESG sustainability reporting",
+                      "GmbH environmental compliance requirements"]),
+                Task("intake-credit", "Credit & Banking Relationship Signals",
+                     f"Identify banking and credit relationship signals for {company}. "
+                     f"Loan documents, bank references, credit lines, covenant mentions "
+                     f"in contracts or meeting minutes?",
+                     ["German Mittelstand bank financing",
+                      "GmbH credit facilities construction"]),
             ]
         else:
             prev = doc[:800]
@@ -297,6 +325,95 @@ class ExtractionRoom(Room):
                                   f"Average size, customers, seasonal patterns, payment terms.",
                                   ["invoice analysis revenue patterns",
                                    "accounts receivable analysis"]))
+            if ds.contracts:
+                tasks.append(Task("extract-contracts", "Contract Financial Obligations",
+                                  f"Extract financial obligations from {len(ds.contracts)} contracts. "
+                                  f"Total committed value, duration, recurring vs one-off costs, "
+                                  f"penalty clauses, significant terms.",
+                                  ["contract financial obligations Germany",
+                                   "construction contract analysis"]))
+            if ds.meeting_minutes:
+                tasks.append(Task("extract-decisions", "Strategic Decisions from Minutes",
+                                  f"Extract financial decisions from {len(ds.meeting_minutes)} meeting minutes. "
+                                  f"Investment approvals, cost measures, strategic pivots, headcount changes.",
+                                  ["board meeting financial decisions",
+                                   "management meeting minutes analysis"]))
+            if ds.qa_reports:
+                tasks.append(Task("extract-quality-costs", "Quality & Rework Costs",
+                                  f"Extract quality failure costs from {len(ds.qa_reports)} QA reports. "
+                                  f"Rework costs, defect rates, warranty claims, operational loss.",
+                                  ["quality cost of poor quality Germany",
+                                   "construction rework defect cost"]))
+
+        # Ensure extraction always has meaningful tasks regardless of data availability
+        base_count = len(tasks)
+        if base_count < 20:
+            extras = [
+                Task("extract-ebitda", "EBITDA & Cash EBITDA",
+                     "Compute EBITDA for all periods. EBITDA margin evolution, "
+                     "difference from net income, D&A as proxy for capex intensity.",
+                     ["EBITDA margin construction Germany",
+                      "cash EBITDA calculation"]),
+                Task("extract-working-capital", "Working Capital Cycle",
+                     "Extract working capital components across all periods. "
+                     "DSO, DIO, DPO, cash conversion cycle, WC as % revenue. Trend?",
+                     ["working capital cycle construction",
+                      "cash conversion cycle Germany"]),
+                Task("extract-capex", "Capital Expenditure Analysis",
+                     "Extract capex patterns: fixed asset changes + D&A proxy. "
+                     "Capex/revenue ratio, maintenance vs growth capex split, "
+                     "asset intensity over time.",
+                     ["capex construction company Germany",
+                      "capital expenditure intensity"]),
+                Task("extract-revenue-bridge", "Revenue Bridge Analysis",
+                     "Build a revenue bridge year-over-year: volume, price, mix, "
+                     "new vs lost customers, market share changes.",
+                     ["revenue bridge analysis",
+                      "revenue growth decomposition"]),
+                Task("extract-cost-bridge", "Cost Structure Bridge",
+                     "Build cost bridge: material, labour, overhead, D&A per year. "
+                     "Cost per unit of revenue. Inflation pass-through.",
+                     ["cost structure analysis construction",
+                      "operating leverage cost bridge"]),
+                Task("extract-leverage-detail", "Detailed Leverage Analysis",
+                     "Full debt schedule: maturity, fixed vs floating rate, secured vs "
+                     "unsecured, covenant analysis. Net debt evolution.",
+                     ["debt maturity schedule German GmbH",
+                      "leverage covenant analysis"]),
+                Task("extract-equity-value", "Equity Value Indicators",
+                     "Book equity vs implied fair value. Retained earnings accumulation, "
+                     "book value per implied share, equity growth rate.",
+                     ["equity value book value German GmbH",
+                      "shareholder value creation"]),
+                Task("extract-tax", "Tax Rate & Deferred Tax",
+                     "Effective tax rate evolution across years. "
+                     "German trade tax + corporate tax, deferred tax assets/liabilities.",
+                     ["German corporate tax rate GmbH",
+                      "effective tax rate analysis"]),
+                Task("extract-intercompany", "Intercompany & Related Party",
+                     "Identify any intercompany transactions, related-party balances, "
+                     "owner loans, dividend payments. Arm's-length terms?",
+                     ["intercompany transactions German GmbH",
+                      "related party transactions construction"]),
+                Task("extract-provisions", "Provisions & Contingent Liabilities",
+                     "Identify provisions and contingent liabilities: warranty reserves, "
+                     "litigation provisions, pension obligations, environmental liabilities.",
+                     ["provisions contingent liabilities HGB",
+                      "construction warranty reserves Germany"]),
+                Task("extract-off-balance", "Off-Balance Sheet & Leases",
+                     "Identify off-balance sheet items: operating leases, factoring, "
+                     "guarantee obligations, uncommitted facilities. True leverage?",
+                     ["off-balance sheet construction Germany",
+                      "operating lease obligations HGB"]),
+                Task("extract-pensions", "Pension & Long-Term Employee Obligations",
+                     "Identify pension and long-term employee obligations: "
+                     "defined benefit liabilities, anniversary bonuses, partial retirement schemes. "
+                     "Actuarial assumptions, funding status, cash impact.",
+                     ["pension obligations HGB German GmbH",
+                      "Rückstellungen employee benefits Germany"]),
+            ]
+            for extra in extras[:20 - base_count]:
+                tasks.append(extra)
 
         if not tasks:
             tasks.append(Task("extract-fail", "Extraction Failed",
@@ -421,6 +538,106 @@ class AnalysisRoom(Room):
                                   ["revenue quality customer concentration",
                                    "accounts receivable construction"]))
 
+        # Pad to 20 workers with deeper analytical tasks
+        analysis_extras = [
+            Task("analysis-dupont", "DuPont Decomposition",
+                 f"Decompose ROE for {f.company_name if f else 'the company'} via DuPont: "
+                 f"net margin × asset turnover × equity multiplier. Which driver dominates? "
+                 f"How has each component evolved?",
+                 ["DuPont analysis ROE decomposition",
+                  "return on equity drivers construction"]),
+            Task("analysis-zscore", "Altman Z-Score & Distress Risk",
+                 f"Compute Altman Z-Score for each year. "
+                 f"Is the company in the safe, grey, or distress zone? "
+                 f"Trend: improving or deteriorating?",
+                 ["Altman Z-score construction SME",
+                  "bankruptcy prediction Germany"]),
+            Task("analysis-cashflow", "Free Cash Flow & FCF Yield",
+                 f"Compute free cash flow: operating cash flow minus capex. "
+                 f"FCF margin, FCF conversion rate, year-over-year FCF growth.",
+                 ["free cash flow construction Germany",
+                  "FCF yield analysis"]),
+            Task("analysis-macro-impact", "COVID & Macro Event Impact",
+                 f"Quantify the financial impact of macro events on "
+                 f"{f.company_name if f else 'the company'}: 2008 GFC, 2020 COVID, "
+                 f"2022 rate/material shock. Revenue and margin impact per event.",
+                 ["COVID impact German construction 2020",
+                  "German construction market crisis 2022"]),
+            Task("analysis-revenue-decomp", "Revenue Growth Decomposition",
+                 f"Decompose total revenue CAGR into: organic growth, price increases, "
+                 f"volume changes, new segments. Which components drove growth?",
+                 ["revenue growth decomposition construction",
+                  "organic vs inorganic growth Germany"]),
+            Task("analysis-opex-deep", "OpEx Trend & Fixed/Variable Split",
+                 f"Decompose operating expenses: fixed (overhead, D&A, admin) vs "
+                 f"variable (materials, direct labour). Operating leverage ratio. "
+                 f"OpEx % revenue stable or growing?",
+                 ["operating leverage fixed variable costs",
+                  "overhead ratio construction Germany"]),
+            Task("analysis-capex-returns", "Capex Efficiency & Returns",
+                 f"Return on invested capital (ROIC) and capex efficiency. "
+                 f"Revenue generated per EUR of capex. Asset light vs asset heavy evolution.",
+                 ["ROIC construction Germany",
+                  "capital efficiency analysis"]),
+            Task("analysis-15yr-arc", "15-Year Business Arc",
+                 f"Narrate the full 15-year strategic arc of "
+                 f"{f.company_name if f else 'the company'}. "
+                 f"Three distinct business phases? Structural vs cyclical changes?",
+                 ["German construction company 15 year history",
+                  "business cycle strategic phases Mittelstand"]),
+            Task("analysis-net-debt", "Net Debt & Deleveraging Path",
+                 f"Analyse net debt evolution: gross debt minus cash. "
+                 f"Net leverage ratio, annual debt service burden, "
+                 f"years to full deleveraging at current FCF.",
+                 ["net debt analysis construction",
+                  "deleveraging path SME Germany"]),
+            Task("analysis-revenue-segments", "Revenue Segment Deep Dive",
+                 f"Break down revenue by segment where data allows: "
+                 f"residential vs commercial vs industrial vs infrastructure. "
+                 f"Mix shift over 15 years and margin implications.",
+                 ["construction revenue segments Germany",
+                  "residential commercial industrial mix"]),
+            Task("analysis-competitive-moat", "Competitive Moat Analysis",
+                 f"Analyse competitive moat of the company: "
+                 f"switching costs, scale advantages, geographic density, "
+                 f"brand reputation, certification barriers.",
+                 ["competitive moat construction SME",
+                  "durable competitive advantage Mittelstand"]),
+            Task("analysis-interest-sensitivity", "Interest Rate Sensitivity",
+                 f"Model interest rate sensitivity: impact of 100/200bp rate rise "
+                 f"on interest expense, EBT, and free cash flow. "
+                 f"Fixed vs floating debt exposure.",
+                 ["interest rate sensitivity construction",
+                  "rate risk SME Germany 2024"]),
+            Task("analysis-invoice-aging", "Receivables & Payment Behaviour",
+                 f"Analyse accounts receivable quality: DSO trend, ageing profile, "
+                 f"write-offs, provisions, large customer payment behaviour.",
+                 ["accounts receivable aging construction Germany",
+                  "payment behaviour construction sector"]),
+            Task("analysis-material-costs", "Material Cost & Procurement",
+                 f"Analyse material cost dynamics: COGS driver, "
+                 f"material cost inflation 2020-2022, procurement strategy, "
+                 f"hedging or fixed-price contract protections.",
+                 ["construction material cost inflation Germany",
+                  "procurement strategy building materials"]),
+            Task("analysis-compliance-fin", "Compliance & Regulatory Cost",
+                 f"Financial impact of compliance requirements: "
+                 f"total compliance spend, fines, regulatory provisions, "
+                 f"trend and forward-looking regulatory cost increases.",
+                 ["compliance cost financial impact Germany",
+                  "regulatory burden construction GmbH"]),
+            Task("analysis-scenario", "Stress Test & Scenario Analysis",
+                 f"Run three financial scenarios: base case (management guidance), "
+                 f"bear case (10% revenue decline, 100bp rate rise), "
+                 f"bull case (15% growth, margin expansion). Key metrics in each.",
+                 ["financial stress test scenario analysis",
+                  "construction company scenarios 2025"]),
+        ]
+        for extra in analysis_extras:
+            if len(tasks) >= 20:
+                break
+            tasks.append(extra)
+
         return tasks or [Task("analysis-gen", "General Analysis",
                               "No structured data. Provide general assessment.",
                               ["financial analysis"])]
@@ -506,6 +723,81 @@ class BenchmarkingRoom(Room):
                 [f"{flag.metric} improvement",
                  f"{company} {flag.metric}"],
             ))
+
+        bench_extras = [
+            Task("bench-size-peers", "Size-Adjusted Peer Group",
+                 f"Compare {company} to same-size German construction firms (revenue bracket). "
+                 f"Which metrics are truly outliers vs expected for this size tier?",
+                 ["German construction SME size-adjusted benchmarks",
+                  "Mittelstand peer group analysis"]),
+            Task("bench-regional", "Regional Market Benchmarking",
+                 f"Compare {company} to regional German construction market. "
+                 f"Regional revenue per m², labour costs, project win rates vs national norms.",
+                 ["German regional construction market benchmarks",
+                  "Bundesland construction market"]),
+            Task("bench-capex-intensity", "Capex Intensity vs Peers",
+                 f"Benchmark {company} capital expenditure intensity vs construction sector peers. "
+                 f"Is capex/revenue ratio above or below sector average? Implications?",
+                 ["construction capex intensity benchmark Germany",
+                  "capital investment construction sector"]),
+            Task("bench-labour-cost", "Labour Cost Benchmarking",
+                 f"Benchmark {company} labour cost per employee and labour cost ratio "
+                 f"vs German construction sector averages. Wage competitiveness?",
+                 ["German construction wage benchmarks",
+                  "Tarifvertrag Baugewerbe wage levels"]),
+            Task("bench-digital-maturity", "Digital Maturity vs Peers",
+                 f"Benchmark {company} digitalisation level vs German construction sector. "
+                 f"BIM adoption, ERP systems, digital productivity gains in sector.",
+                 ["German construction digital maturity 2024",
+                  "BIM adoption rate Germany"]),
+            Task("bench-esg-score", "ESG vs Sector Standards",
+                 f"Benchmark {company} ESG performance vs German construction sector. "
+                 f"Carbon intensity, workplace safety record, governance quality vs norms.",
+                 ["German construction ESG benchmark",
+                  "construction CO2 intensity Germany"]),
+            Task("bench-credit-rating", "Implied Credit Profile",
+                 f"Estimate {company}'s implied credit rating profile based on financials. "
+                 f"How would a bank view leverage, coverage, and stability vs peers?",
+                 ["SME credit rating criteria Germany",
+                  "construction company bank assessment"]),
+            Task("bench-resilience", "Crisis Resilience vs Sector",
+                 f"Compare {company}'s resilience through 2020 COVID and 2022 crisis vs "
+                 f"German construction peers. Revenue drop, recovery speed, margin protection.",
+                 ["German construction COVID resilience 2020",
+                  "crisis performance construction companies"]),
+            Task("bench-market-share", "Market Share Evolution",
+                 f"Estimate {company}'s implied market share trajectory. "
+                 f"Revenue growth vs sector growth: gaining or losing share? "
+                 f"Key drivers of competitive position change.",
+                 ["German construction market share",
+                  "construction competitive dynamics Germany"]),
+            Task("bench-valuation", "Comparable Valuation Multiples",
+                 f"Estimate {company}'s fair value range using sector EV/EBITDA, "
+                 f"EV/Revenue, P/E multiples from German construction transactions.",
+                 ["German construction M&A multiples",
+                  "construction company valuation EV/EBITDA"]),
+            Task("bench-quality-score", "Business Quality Score",
+                 f"Score {company}'s overall business quality vs peers 1-10: "
+                 f"revenue predictability, margin stability, balance sheet strength, "
+                 f"management quality, competitive position.",
+                 ["business quality score framework",
+                  "company quality assessment criteria"]),
+            Task("bench-working-capital", "Working Capital vs Sector",
+                 f"Benchmark {company} working capital vs German construction peers. "
+                 f"DSO, DIO, DPO vs sector norms. WC-intensive or WC-light?",
+                 ["working capital benchmark construction Germany",
+                  "cash conversion cycle sector comparison"]),
+            Task("bench-overhead", "Overhead Structure vs Peers",
+                 f"Benchmark {company} SGA and overhead ratio vs German construction peers. "
+                 f"Admin costs, management layers, G&A efficiency.",
+                 ["overhead ratio construction Germany",
+                  "SGA benchmark German SME"]),
+        ]
+        for extra in bench_extras:
+            if len(tasks) >= 20:
+                break
+            tasks.append(extra)
+
         return tasks
 
     def build_context_str(self, ctx: PipelineContext) -> str:
@@ -608,6 +900,86 @@ class StrategyRoom(Room):
                  [f"{company} strategic transformation",
                   "initiative prioritisation financial improvement"]),
         ]
+
+        strat_extras = [
+            Task("strat-ma", "M&A & Acquisition Strategy",
+                 f"Identify M&A opportunities for {company}: "
+                 f"target profile (size, geography, capability gaps), "
+                 f"build vs buy analysis, valuation range, integration complexity.",
+                 ["construction M&A Germany SME",
+                  "acquisition strategy Mittelstand"]),
+            Task("strat-partnerships", "Strategic Partnerships",
+                 f"Identify strategic partnership opportunities for {company}: "
+                 f"subcontractors, technology partners, financial institutions, "
+                 f"public sector frameworks. Value and risk of each.",
+                 ["construction strategic partnerships Germany",
+                  "JV partnership construction SME"]),
+            Task("strat-pricing", "Pricing Power & Revenue Strategy",
+                 f"Analyse pricing power for {company}: "
+                 f"margin trend vs volume trend, price elasticity in German construction, "
+                 f"premium product/service opportunities.",
+                 ["construction pricing strategy Germany",
+                  "value-based pricing construction"]),
+            Task("strat-financing", "Optimal Financing Structure",
+                 f"Design optimal capital structure for {company}: "
+                 f"current vs optimal leverage, debt/equity mix, "
+                 f"alternative funding (KfW, EU funds, project finance).",
+                 ["KfW financing German construction",
+                  "optimal capital structure SME Germany"]),
+            Task("strat-talent", "Talent Acquisition & Retention",
+                 f"Build talent strategy for {company} in German construction labour shortage: "
+                 f"recruitment channels, retention levers, apprenticeship programmes, "
+                 f"foreign worker integration, automation substitution.",
+                 ["Fachkraeftemangel construction Germany 2024",
+                  "talent retention construction company"]),
+            Task("strat-internationalisation", "Internationalisation Options",
+                 f"Assess internationalisation potential for {company}: "
+                 f"neighbouring markets (Austria, Switzerland, Poland), "
+                 f"project export, risk vs return.",
+                 ["German construction export internationalisation",
+                  "construction company expansion Europe"]),
+            Task("strat-succession", "Succession & Ownership Strategy",
+                 f"Assess succession and ownership strategy for {company}: "
+                 f"management buyout, family succession, institutional investor entry, "
+                 f"IPO readiness. Valuation and timing.",
+                 ["German Mittelstand succession planning",
+                  "GmbH ownership transition options"]),
+            Task("strat-innovation", "Product & Service Innovation",
+                 f"Identify product and service innovation opportunities for {company}: "
+                 f"new revenue streams, service contracts, maintenance, "
+                 f"prefab/modular, circular economy.",
+                 ["construction innovation new revenue streams",
+                  "service model construction Germany"]),
+            Task("strat-procurement", "Strategic Procurement Optimisation",
+                 f"Build a procurement strategy for {company}: "
+                 f"material cost reduction, supplier consolidation, "
+                 f"long-term contracts vs spot, reverse auction opportunities.",
+                 ["construction procurement strategy Germany",
+                  "material cost reduction SME"]),
+            Task("strat-it", "IT Systems & ERP Roadmap",
+                 f"Design IT and ERP roadmap for {company}: "
+                 f"current system assessment, ERP/BIM integration, "
+                 f"data analytics capability, cybersecurity requirements.",
+                 ["construction ERP systems Germany",
+                  "BIM integration SME"]),
+            Task("strat-insurance", "Insurance & Risk Transfer",
+                 f"Analyse insurance strategy for {company}: "
+                 f"construction all-risk, professional liability, D&O, "
+                 f"cyber, business interruption. Gaps and optimisation.",
+                 ["construction insurance Germany",
+                  "risk transfer SME insurance portfolio"]),
+            Task("strat-export", "Export & International Revenue",
+                 f"Assess {company}'s export readiness: "
+                 f"cross-border project potential, DACH market opportunities, "
+                 f"regulatory barriers, foreign entity requirements.",
+                 ["German construction export DACH",
+                  "construction company international expansion"]),
+        ]
+        for extra in strat_extras:
+            if len(tasks) >= 20:
+                break
+            tasks.append(extra)
+
         return tasks
 
     def build_context_str(self, ctx: PipelineContext) -> str:
@@ -696,6 +1068,66 @@ class ReportingRoom(Room):
                  f"balance sheet, key ratios, flag summary. Clean, board-ready.",
                  ["financial data appendix",
                   "financial tables board presentation"]),
+            Task("report-kpi-dashboard", "KPI Dashboard",
+                 f"Design a 1-page KPI dashboard for {company}: "
+                 f"10-12 most important metrics, current values, trend arrows, "
+                 f"RAG status (red/amber/green), peer comparison.",
+                 ["KPI dashboard board reporting",
+                  "financial KPI one-pager"]),
+            Task("report-timeline", "15-Year Strategic Timeline",
+                 f"Write a 15-year strategic timeline for {company}: "
+                 f"major milestones, acquisitions, crises, recoveries, strategic pivots. "
+                 f"Annotated with financial turning points.",
+                 [f"{company} history timeline",
+                  "company strategic history milestones"]),
+            Task("report-peer-table", "Peer Comparison Table",
+                 f"Write a detailed peer comparison chapter for {company}: "
+                 f"3-5 comparable German construction companies, key metric comparison table, "
+                 f"relative strengths and weaknesses.",
+                 ["German construction peer comparison",
+                  "comparable company analysis construction"]),
+            Task("report-cash-deep", "Cash Flow Deep Dive",
+                 f"Dedicated cash flow analysis chapter for {company}: "
+                 f"operating vs investing vs financing cash flows, FCF generation, "
+                 f"cash cycle, cash conversion quality.",
+                 ["cash flow analysis chapter",
+                  "FCF report construction"]),
+            Task("report-mgmt-summary", "Management Action Summary",
+                 f"Write a concise management action summary for {company}: "
+                 f"3 immediate (30-day), 3 medium-term (90-day), 3 long-term (12-month) actions "
+                 f"with clear owners and success metrics.",
+                 ["management action plan summary",
+                  "executive action items"]),
+            Task("report-workforce-chapter", "Workforce & People Chapter",
+                 f"Full workforce chapter for {company}: headcount evolution, "
+                 f"org structure, labour cost as % revenue, productivity, "
+                 f"retention risk, succession gaps.",
+                 ["workforce chapter HR report",
+                  "people analytics report"]),
+            Task("report-tech-innovation", "Technology & Innovation Chapter",
+                 f"Technology and innovation chapter for {company}: "
+                 f"current digital maturity, BIM/ERP status, innovation investment vs peers, "
+                 f"digitalisation roadmap with ROI.",
+                 ["construction technology report Germany",
+                  "digital transformation chapter"]),
+            Task("report-esg-chapter", "ESG & Sustainability Chapter",
+                 f"ESG chapter for {company}: environmental footprint, "
+                 f"social indicators, governance quality, EU taxonomy alignment, "
+                 f"regulatory obligations and timeline.",
+                 ["ESG report construction Germany",
+                  "sustainability chapter board"]),
+            Task("report-credit-memo", "Lender Credit Memo",
+                 f"Write a credit memo perspective for {company}: "
+                 f"as if a bank were assessing a new facility. "
+                 f"Leverage, coverage, repayment capacity, collateral, covenant suggestions.",
+                 ["credit memo SME Germany",
+                  "lender analysis construction company"]),
+            Task("report-investor-deck", "Investor One-Pager",
+                 f"Write an investor one-pager for {company}: "
+                 f"investment thesis, key financial metrics, growth story, "
+                 f"valuation range, key risks. Suitable for a private equity or family office.",
+                 ["investor one-pager private equity",
+                  "investment summary construction company"]),
         ]
 
     def build_context_str(self, ctx: PipelineContext) -> str:
