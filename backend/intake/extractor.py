@@ -84,13 +84,30 @@ async def extract_financials(filename: str, content: bytes,
       2. Otherwise: parse document → LLM extraction → reconciliation gate
       3. If reconciliation fails: one retry with errors surfaced
     """
-    # Fast path: JSON files that already match the canonical schema skip LLM entirely
+    # Fast path: JSON files — either canonical schema or SEC EDGAR XBRL format
     if filename.lower().endswith(".json"):
         try:
             raw = json.loads(content.decode("utf-8"))
+
+            # Detect SEC EDGAR company facts format
+            if "facts" in raw and "entityName" in raw:
+                log.info("Intake: detected SEC EDGAR XBRL format in %s", filename)
+                raw = parsers.parse_sec_edgar_json(raw)
+                log.info("Intake: SEC EDGAR parsed: company=%s, periods=%s",
+                         raw.get("company_name"), raw.get("income_statement", {}).get("periods", []))
+
             financials = _build_financials(raw)
+
+            # Validate: reject silently-empty extractions
+            if not financials.income_statement.periods:
+                raise ValueError("No financial periods found — JSON does not match canonical schema")
+            if not any(financials.income_statement.revenue.values()):
+                raise ValueError("All revenue values are zero — extraction produced no data")
+
             recon = reconcile(financials)
-            log.info("Intake: loaded %s directly from JSON (no LLM call)", filename)
+            log.info("Intake: loaded %s directly (no LLM). Periods=%s recon=%s",
+                     filename, financials.income_statement.periods,
+                     "PASS" if recon.passed else f"FAIL ({len(recon.errors)} errors)")
             return ExtractionResult(financials, recon, llm_calls=0, raw_extracted=raw)
         except Exception as e:
             log.warning("Intake: direct JSON parse failed (%s), falling back to LLM", e)

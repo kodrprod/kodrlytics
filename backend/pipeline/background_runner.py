@@ -62,33 +62,47 @@ async def _process_company_batch(
         _evt(job_id, "company_error", company=batch.company_hint, error="All files failed extraction")
         return None
 
+    periods = financials.income_statement.periods
+    rev_latest = max(financials.income_statement.revenue.values(), default=0)
+    log.info("  [OK] extraction: company=%s  periods=%s  revenue_latest=%.0f %s",
+             financials.company_name, periods, rev_latest, financials.currency)
     _evt(job_id, "company_extracted", company=financials.company_name,
-         periods=len(financials.income_statement.periods))
+         periods=len(periods))
 
     # Analysis
     analysis = run_analysis(financials)
+    valid_ratios = [r for r in analysis.ratios if not r.not_derivable]
+    log.info("  [OK] analysis:   %d ratios computed  (%d not derivable)",
+             len(valid_ratios), len(analysis.ratios) - len(valid_ratios))
+
     benchmark = run_benchmark(analysis, financials.nace_code, store)
+    log.info("  [OK] benchmark:  %d flags raised  (nace=%s)",
+             len(benchmark.flags), financials.nace_code)
     _evt(job_id, "company_analysed", company=financials.company_name,
-         ratio_count=len([r for r in analysis.ratios if not r.not_derivable]),
-         flag_count=len(benchmark.flags))
+         ratio_count=len(valid_ratios), flag_count=len(benchmark.flags))
 
     # Strategy
     actions = build_actions_from_flags(benchmark.flags, store, financials.nace_code)
     projections = compute_projections(actions, financials)
     proj_summary = format_projections_summary(projections)
+    log.info("  [OK] strategy:   %d actions  %d projections", len(actions), len(projections))
 
     # Briefing
     try:
         narrative, grounding_passed = await generate_briefing(analysis, benchmark)
+        log.info("  [OK] briefing:   grounding=%s  length=%d chars",
+                 "PASS" if grounding_passed else "WARN", len(narrative))
     except Exception as e:
-        log.warning("Job %s: narrative failed for %s: %s", job_id, financials.company_name, e)
+        log.warning("  [--] briefing failed for %s: %s", financials.company_name, e)
         narrative = f"[Narrative generation failed: {e}]"
+        grounding_passed = False
 
     # Deep recommendations (detailed Doktorarbeit sections)
     try:
         deep_recs = await generate_deep_recommendations(analysis, benchmark, projections)
+        log.info("  [OK] deep_recs:  %d chars", len(deep_recs))
     except Exception as e:
-        log.warning("Job %s: deep recommendations failed: %s", job_id, e)
+        log.warning("  [--] deep recommendations failed: %s", e)
         deep_recs = ""
 
     return CompanyReport(
