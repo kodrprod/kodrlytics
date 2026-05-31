@@ -47,15 +47,23 @@ class AnalysisReport:
 
 
 def _safe(text: str) -> str:
-    """Replace characters outside latin-1 so Helvetica (core font) can render them."""
-    return (text
-            .replace("—", "--")   # em dash
-            .replace("–", "-")    # en dash
-            .replace("’", "'")    # right single quote
-            .replace("‘", "'")    # left single quote
-            .replace("“", '"')    # left double quote
-            .replace("”", '"')    # right double quote
-            .replace("…", "...")) # ellipsis
+    “””Replace characters outside latin-1 so Helvetica (core font) can render them.”””
+    text = (text
+            .replace(“—“, “--”)
+            .replace(“–“, “-”)
+            .replace(“‐”, “-”)  # unicode hyphen
+            .replace(“‑”, “-”)  # non-breaking hyphen
+            .replace(“‒”, “-”)  # figure dash
+            .replace(“–“, “-”)  # en dash (belt-and-suspenders)
+            .replace(“—“, “--”) # em dash (belt-and-suspenders)
+            .replace(“−”, “-”)  # minus sign
+            .replace(“’”, “’”)
+            .replace(“‘”, “’”)
+            .replace(““”, ‘”’)
+            .replace(“””, ‘”’)
+            .replace(“…”, “...”))
+    # Catch-all: drop anything still outside latin-1
+    return text.encode(“latin-1”, errors=”replace”).decode(“latin-1”)
 
 
 class KodrlyticsPDF(FPDF):
