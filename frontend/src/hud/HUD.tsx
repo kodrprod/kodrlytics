@@ -20,35 +20,24 @@ interface JobState {
   recent_events: Array<{ event_type: string; company?: string; count?: number }>
 }
 
-const STATUS_COLORS = {
-  idle:     '#334455',
-  running:  '#00ccff',
-  complete: '#00ff88',
-  error:    '#ff4444',
-}
-
-const STATUS_LABELS = {
-  idle:     'READY',
-  running:  'RUNNING',
-  complete: 'COMPLETE',
-  error:    'ERROR',
-}
+const ACCENT = '#FF6600'
+const BLACK  = '#111111'
+const GREY   = '#888888'
 
 const API = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL ?? 'http://localhost:8000'
 
 export function HUD({ state, onStartRun }: HUDProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const zipInputRef = useRef<HTMLInputElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const zipInputRef  = useRef<HTMLInputElement>(null)
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const [job, setJob] = useState<JobState | null>(null)
+  const [job, setJob]               = useState<JobState | null>(null)
   const [jobSubmitting, setJobSubmitting] = useState(false)
-  const [jobError, setJobError] = useState('')
+  const [jobError, setJobError]     = useState('')
 
-  const canRun = state.status === 'idle' || state.status === 'complete' || state.status === 'error'
+  const canRun   = state.status === 'idle' || state.status === 'complete' || state.status === 'error'
   const jobActive = job !== null && job.status !== 'complete' && job.status !== 'error'
 
-  // Poll job status every 3 s while active
   useEffect(() => {
     if (!job || !jobActive) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -58,7 +47,7 @@ export function HUD({ state, onStartRun }: HUDProps) {
       try {
         const res = await fetch(`${API}/jobs/${job.job_id}`)
         if (res.ok) setJob(await res.json())
-      } catch { /* ignore transient errors */ }
+      } catch { /* ignore */ }
     }, 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [job?.job_id, jobActive])
@@ -73,9 +62,7 @@ export function HUD({ state, onStartRun }: HUDProps) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    setJobSubmitting(true)
-    setJobError('')
-    setJob(null)
+    setJobSubmitting(true); setJobError(''); setJob(null)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -97,166 +84,198 @@ export function HUD({ state, onStartRun }: HUDProps) {
     }
   }
 
+  const statusDot = { idle: GREY, running: ACCENT, complete: '#009933', error: '#CC0000' }[state.status]
+  const statusLabel = { idle: 'READY', running: 'RUNNING', complete: 'COMPLETE', error: 'ERROR' }[state.status]
+
   return (
     <div style={{
-      position: 'absolute', top: 0, right: 0,
-      width: 400, height: '100vh',
-      background: 'rgba(5, 12, 22, 0.88)',
-      backdropFilter: 'blur(12px)',
-      borderLeft: '1px solid rgba(0,120,200,0.2)',
+      width: 320, flexShrink: 0,
+      height: '100vh',
+      background: '#FFFFFF',
+      borderRight: `2px solid ${BLACK}`,
       display: 'flex', flexDirection: 'column',
-      padding: '16px', gap: 12, zIndex: 10,
-      fontFamily: 'Segoe UI, system-ui, sans-serif',
-      overflowY: 'auto',
+      overflow: 'hidden',
+      fontFamily: '"Courier New", Courier, monospace',
     }}>
+
       {/* Header */}
-      <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e0eeff', letterSpacing: '0.04em' }}>KODRLYTICS</div>
-        <div style={{ fontSize: 10, color: '#445566', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-          Financial Analysis Engine
+      <div style={{ background: BLACK, padding: '12px 16px', borderBottom: `3px solid ${ACCENT}` }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#FFFFFF', letterSpacing: '0.1em' }}>
+          KODRLYTICS
+        </div>
+        <div style={{ fontSize: 9, color: '#666666', letterSpacing: '0.2em', marginTop: 2 }}>
+          FINANCIAL ANALYSIS ENGINE
         </div>
       </div>
 
-      {/* Status indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: STATUS_COLORS[state.status],
-          boxShadow: `0 0 6px ${STATUS_COLORS[state.status]}`,
-          animation: state.status === 'running' ? 'pulse 1s infinite' : 'none',
-        }} />
-        <span style={{ color: STATUS_COLORS[state.status], fontSize: 11, fontWeight: 700, letterSpacing: '0.1em' }}>
-          {STATUS_LABELS[state.status]}
-        </span>
-        {state.errorMsg && <span style={{ color: '#ff6666', fontSize: 10 }}>{state.errorMsg.slice(0, 40)}</span>}
-      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* Quick run buttons */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => onStartRun()} disabled={!canRun} style={btnStyle(canRun, 'blue')}>
-          RUN SAMPLE
-        </button>
-        <button onClick={() => fileInputRef.current?.click()} disabled={!canRun} style={btnStyle(canRun, 'dim')}>
-          UPLOAD FILE
-        </button>
-        <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.pdf,.json"
-          style={{ display: 'none' }} onChange={handleFileChange} />
-      </div>
-
-      {/* Deep analysis button */}
-      <button
-        onClick={() => zipInputRef.current?.click()}
-        disabled={jobSubmitting || jobActive}
-        style={{
-          width: '100%', padding: '10px 16px',
-          background: jobSubmitting || jobActive ? 'rgba(20,30,40,0.3)' : 'rgba(0,80,40,0.35)',
-          border: `1px solid ${jobSubmitting || jobActive ? '#1a2a3a' : '#00aa55'}`,
-          borderRadius: 4,
-          color: jobSubmitting || jobActive ? '#334455' : '#00ee88',
-          fontSize: 12, fontWeight: 700,
-          cursor: jobSubmitting || jobActive ? 'not-allowed' : 'pointer',
-          letterSpacing: '0.08em',
-        }}
-      >
-        {jobSubmitting ? 'SUBMITTING...' : jobActive ? 'DEEP ANALYSIS RUNNING...' : '⚡ DEEP ANALYSIS (ZIP / LARGE)'}
-      </button>
-      <input ref={zipInputRef} type="file" accept=".zip,.csv,.xlsx,.pdf,.json"
-        style={{ display: 'none' }} onChange={handleDeepUpload} />
-
-      {jobError && (
-        <div style={{ color: '#ff6666', fontSize: 10, padding: '4px 8px',
-                      background: 'rgba(255,50,50,0.1)', borderRadius: 3 }}>
-          {jobError}
+        {/* Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            width: 9, height: 9, borderRadius: '50%',
+            background: statusDot, display: 'inline-block', flexShrink: 0,
+            boxShadow: state.status === 'running' ? `0 0 8px ${ACCENT}` : 'none',
+            animation: state.status === 'running' ? 'dotPulse 1s infinite' : 'none',
+          }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: statusDot, letterSpacing: '0.12em' }}>
+            {statusLabel}
+          </span>
+          {state.errorMsg && (
+            <span style={{ fontSize: 9, color: '#CC0000', marginLeft: 4 }}>
+              {state.errorMsg.slice(0, 32)}
+            </span>
+          )}
         </div>
-      )}
 
-      {/* Job status panel */}
-      {job && (
-        <div style={{
-          background: 'rgba(0,30,20,0.4)', border: '1px solid rgba(0,150,80,0.3)',
-          borderRadius: 6, padding: '10px 12px', fontSize: 11, color: '#aaccbb',
-        }}>
-          <div style={{ fontWeight: 700, color: job.status === 'error' ? '#ff6666' : '#00ee88',
-                        marginBottom: 6, letterSpacing: '0.06em' }}>
-            DEEP JOB — {job.status.toUpperCase()}
-          </div>
-          <div style={{ color: '#8899aa', marginBottom: 4, fontSize: 10 }}>{job.filename}</div>
-          {job.company_count > 0 && (
-            <div style={{ marginBottom: 4 }}>
-              Companies: {job.companies_done} / {job.company_count}
-              <div style={{ marginTop: 3, height: 4, borderRadius: 2,
-                            background: 'rgba(0,100,50,0.3)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${Math.round((job.companies_done / job.company_count) * 100)}%`,
-                  background: '#00ee88', transition: 'width 0.4s',
-                }} />
-              </div>
-            </div>
-          )}
-          {job.current_stage && (
-            <div style={{ color: '#556677', fontSize: 9, marginBottom: 4 }}>
-              {job.current_stage.replace(/_/g, ' ')}
-            </div>
-          )}
-          {job.error && <div style={{ color: '#ff6666', fontSize: 10, marginBottom: 4 }}>{job.error}</div>}
-
-          {job.result_ready && (
-            <button
-              onClick={() => window.open(`${API}/jobs/${job.job_id}/report`, '_blank')}
-              style={{
-                marginTop: 6, width: '100%', padding: '8px',
-                background: 'rgba(0,100,180,0.4)', border: '1px solid #0088ff',
-                borderRadius: 4, color: '#66ccff', fontSize: 11, fontWeight: 700,
-                cursor: 'pointer', letterSpacing: '0.06em',
-              }}
-            >
-              ↓ DOWNLOAD PDF REPORT
+        {/* Section: Quick Run */}
+        <div>
+          <div style={sectionHeader}>QUICK RUN</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => onStartRun()} disabled={!canRun}
+              style={btn(canRun, 'primary')}>
+              RUN SAMPLE
             </button>
-          )}
+            <button onClick={() => fileInputRef.current?.click()} disabled={!canRun}
+              style={btn(canRun, 'secondary')}>
+              UPLOAD FILE
+            </button>
+          </div>
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.pdf,.json"
+            style={{ display: 'none' }} onChange={handleFileChange} />
+        </div>
 
-          {job.recent_events.length > 0 && (
-            <div style={{ marginTop: 6, maxHeight: 72, overflowY: 'auto' }}>
-              {job.recent_events.slice(-6).map((ev, i) => (
-                <div key={i} style={{ color: '#445566', fontSize: 9, fontFamily: 'monospace', lineHeight: 1.4 }}>
-                  {ev.event_type}{ev.company ? `: ${ev.company}` : ''}{ev.count != null ? ` (${ev.count})` : ''}
-                </div>
-              ))}
+        {/* Section: Deep Analysis */}
+        <div>
+          <div style={sectionHeader}>DEEP ANALYSIS</div>
+          <button
+            onClick={() => zipInputRef.current?.click()}
+            disabled={jobSubmitting || jobActive}
+            style={{
+              width: '100%', padding: '9px 12px',
+              background: jobSubmitting || jobActive ? '#F5F5F5' : '#FFFFFF',
+              border: `2px solid ${jobSubmitting || jobActive ? '#CCCCCC' : ACCENT}`,
+              color: jobSubmitting || jobActive ? '#AAAAAA' : ACCENT,
+              fontFamily: '"Courier New", monospace', fontSize: 11, fontWeight: 700,
+              cursor: jobSubmitting || jobActive ? 'not-allowed' : 'pointer',
+              letterSpacing: '0.08em',
+              transition: 'all 0.2s',
+            }}>
+            {jobSubmitting ? 'SUBMITTING...' : jobActive ? 'JOB RUNNING...' : '>> DEEP ANALYSIS (ZIP/LARGE)'}
+          </button>
+          <input ref={zipInputRef} type="file" accept=".zip,.csv,.xlsx,.pdf,.json"
+            style={{ display: 'none' }} onChange={handleDeepUpload} />
+
+          {jobError && (
+            <div style={{ marginTop: 6, fontSize: 9, color: '#CC0000', padding: '4px 6px', border: '1px solid #CC0000' }}>
+              ERR: {jobError}
             </div>
           )}
         </div>
-      )}
 
-      {/* Divider */}
-      <div style={{ height: 1, background: 'rgba(0,80,160,0.2)' }} />
+        {/* Job status panel */}
+        {job && (
+          <div style={{ border: `1px solid ${job.status === 'error' ? '#CC0000' : job.status === 'complete' ? '#009933' : ACCENT}`, padding: '8px 10px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 5,
+              color: job.status === 'error' ? '#CC0000' : job.status === 'complete' ? '#009933' : ACCENT }}>
+              [JOB: {job.status.toUpperCase()}]
+            </div>
+            <div style={{ fontSize: 9, color: GREY, marginBottom: 4 }}>{job.filename}</div>
 
-      {/* Event log or results */}
-      {state.result ? <ResultsPanel result={state.result} /> : <EventLog events={state.events} />}
+            {job.company_count > 0 && (
+              <div style={{ marginBottom: 5 }}>
+                <div style={{ fontSize: 9, color: BLACK, marginBottom: 3 }}>
+                  Companies: {job.companies_done}/{job.company_count}
+                </div>
+                <div style={{ height: 4, background: '#E0E0E0', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.round((job.companies_done / job.company_count) * 100)}%`,
+                    background: ACCENT, transition: 'width 0.4s',
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {job.current_stage && (
+              <div style={{ fontSize: 8, color: GREY, marginBottom: 4 }}>
+                {job.current_stage.replace(/_/g, ' ').toUpperCase()}
+              </div>
+            )}
+            {job.error && (
+              <div style={{ fontSize: 9, color: '#CC0000', marginBottom: 4 }}>{job.error}</div>
+            )}
+
+            {job.result_ready && (
+              <button
+                onClick={() => window.open(`${API}/jobs/${job.job_id}/report`, '_blank')}
+                style={{
+                  width: '100%', padding: '7px', marginTop: 4,
+                  background: BLACK, border: 'none',
+                  color: '#FFFFFF', fontSize: 10, fontWeight: 700,
+                  fontFamily: '"Courier New", monospace',
+                  cursor: 'pointer', letterSpacing: '0.08em',
+                }}>
+                >> DOWNLOAD PDF REPORT
+              </button>
+            )}
+
+            {job.recent_events.length > 0 && (
+              <div style={{ marginTop: 6, borderTop: '1px solid #E0E0E0', paddingTop: 5 }}>
+                {job.recent_events.slice(-5).map((ev, i) => (
+                  <div key={i} style={{ fontSize: 8, color: GREY, lineHeight: 1.5 }}>
+                    {ev.event_type}{ev.company ? `: ${ev.company}` : ''}{ev.count != null ? ` (${ev.count})` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Divider */}
+        <div style={{ borderTop: `1px solid #E0E0E0`, paddingTop: 8 }}>
+          <div style={sectionHeader}>EVENT LOG</div>
+        </div>
+
+        {/* Log or results */}
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {state.result ? <ResultsPanel result={state.result} /> : <EventLog events={state.events} />}
+        </div>
+
+      </div>
 
       {/* Footer */}
-      <div style={{ fontSize: 9, color: '#223344', textAlign: 'center', letterSpacing: '0.05em' }}>
-        ALL PROJECTIONS ARE ILLUSTRATIVE — NOT GUARANTEES
+      <div style={{
+        borderTop: `1px solid #E0E0E0`, padding: '6px 14px',
+        fontSize: 7.5, color: '#BBBBBB', letterSpacing: '0.06em',
+        textAlign: 'center',
+      }}>
+        ALL PROJECTIONS ARE ILLUSTRATIVE -- NOT GUARANTEES
       </div>
 
-      <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }`}</style>
+      <style>{`
+        @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      `}</style>
     </div>
   )
 }
 
-function btnStyle(active: boolean, variant: 'blue' | 'dim'): React.CSSProperties {
-  const colors = {
-    blue: { bg: 'rgba(0,100,180,0.3)', border: '#0066aa', text: '#00aaff' },
-    dim:  { bg: 'rgba(0,60,100,0.2)',  border: '#004466', text: '#6699bb' },
-  }
-  const c = colors[variant]
+const sectionHeader: React.CSSProperties = {
+  fontSize: 8, fontWeight: 700, color: GREY, letterSpacing: '0.2em',
+  marginBottom: 6, textTransform: 'uppercase',
+}
+
+function btn(active: boolean, variant: 'primary' | 'secondary'): React.CSSProperties {
+  const isPrimary = variant === 'primary'
   return {
-    flex: 1, padding: '8px 12px',
-    background: active ? c.bg : 'rgba(30,40,50,0.3)',
-    border: `1px solid ${active ? c.border : '#223344'}`,
-    borderRadius: 4,
-    color: active ? c.text : '#445566',
-    fontSize: 11, fontWeight: 600,
+    flex: 1, padding: '8px 10px',
+    background: active ? (isPrimary ? BLACK : '#FFFFFF') : '#F5F5F5',
+    border: `2px solid ${active ? (isPrimary ? BLACK : '#AAAAAA') : '#E0E0E0'}`,
+    color: active ? (isPrimary ? '#FFFFFF' : BLACK) : '#AAAAAA',
+    fontFamily: '"Courier New", monospace',
+    fontSize: 10, fontWeight: 700,
     cursor: active ? 'pointer' : 'not-allowed',
     letterSpacing: '0.06em',
+    transition: 'all 0.15s',
   }
 }
