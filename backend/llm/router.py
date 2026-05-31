@@ -35,24 +35,23 @@ else:
 
 log = logging.getLogger(__name__)
 
-_API_BASE = "https://openrouter.ai/api/v1/chat/completions"
-_CACHE_PATH = Path(__file__).parent.parent.parent / "dev.db"
+_API_BASE       = "https://openrouter.ai/api/v1/chat/completions"
+_ANTHROPIC_BASE = "https://api.anthropic.com/v1/messages"
+_CACHE_PATH     = Path(__file__).parent.parent.parent / "dev.db"
 
-_API_KEY       = os.getenv("OPENROUTER_API_KEY", "")
-_MODEL         = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
-_FALLBACK      = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
-# EXTRACT_MODEL: reads raw documents and populates FactsStore — the most accuracy-critical
-# call in the pipeline. A wrong read here propagates into every room report.
-# Set to a premium model for production; free model is fine for testing cached data.
-_EXTRACT_MODEL = os.getenv("EXTRACT_MODEL", _MODEL)
+_API_KEY        = os.getenv("OPENROUTER_API_KEY", "")
+_ANTHROPIC_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
+_MODEL          = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
+_FALLBACK       = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
+# EXTRACT_MODEL: reads raw documents and populates FactsStore — most accuracy-critical call.
+_EXTRACT_MODEL  = os.getenv("EXTRACT_MODEL", _MODEL)
 # NARRATE_MODEL: used for all synthesis (workers, managers, CEO).
-# Set to a premium model to get instruction-following narration on pre-verified facts.
-_NARRATE_MODEL = os.getenv("NARRATE_MODEL", _MODEL)
-_DATA_MODE     = os.getenv("DATA_MODE", "test")
+_NARRATE_MODEL  = os.getenv("NARRATE_MODEL", _MODEL)
+_DATA_MODE      = os.getenv("DATA_MODE", "test")
 
-if not _API_KEY:
+if not _API_KEY and not _ANTHROPIC_KEY:
     log.warning(
-        "OPENROUTER_API_KEY is not set! "
+        "Neither OPENROUTER_API_KEY nor ANTHROPIC_API_KEY is set! "
         "Looked for .env at: %s  (exists=%s) | cwd=%s",
         _dotenv_explicit, _dotenv_explicit.exists(), Path.cwd()
     )
@@ -65,6 +64,7 @@ class LLMError(Exception):
 class RouterConfig:
     def __init__(self):
         self.api_key        = _API_KEY
+        self.anthropic_key  = _ANTHROPIC_KEY
         self.model          = _MODEL
         self.extract_model  = _EXTRACT_MODEL
         self.narrate_model  = _NARRATE_MODEL
@@ -119,7 +119,94 @@ def _cache_set(key: str, response: str) -> None:
         pass
 
 
-# ── HTTP call ─────────────────────────────────────────────────────────────────
+# ── Direct Anthropic API call ─────────────────────────────────────────────────
+
+async def _call_anthropic(model: str, messages: list[dict],
+                           temperature: float = 0.0) -> tuple[str, float, float]:
+    """Call the Anthropic Messages API directly (not via OpenRouter)."""
+    if not _config.anthropic_key:
+        raise LLMError("ANTHROPIC_API_KEY is not set")
+
+    key = _cache_key(model, messages)
+    cached = _cache_get(key)
+    if cached is not None:
+        log.info("LLM cache hit model=%s key=%s…", model, key[:8])
+        return cached, 0.0, 0.0
+
+    # Anthropic separates system prompt from user messages
+    system = ""
+    user_messages = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system = msg["content"]
+        else:
+            user_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    headers = {
+        "x-api-key": _config.anthropic_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    body: dict = {
+        "model": model,
+        "max_tokens": 4096,
+        "temperature": temperature,
+        "messages": user_messages,
+    }
+    if system:
+        body["system"] = system
+
+    backoff = [2, 4, 8, 16]
+    last_err: Exception | None = None
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        for attempt, wait in enumerate([0] + backoff):
+            if wait:
+                await asyncio.sleep(wait)
+            t0 = time.perf_counter()
+            try:
+                resp = await client.post(_ANTHROPIC_BASE, headers=headers, json=body)
+                latency = time.perf_counter() - t0
+                if resp.status_code == 429:
+                    log.warning("Anthropic 429 rate-limit model=%s attempt=%d", model, attempt)
+                    last_err = LLMError("Rate limited")
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["content"][0]["text"]
+                usage = data.get("usage", {})
+                tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+                # Sonnet pricing: ~$3/M input, $15/M output (rough average $5/M)
+                cost = tokens * 0.000005
+                log.info("Anthropic call model=%s tokens=%d cost=$%.5f latency=%.2fs",
+                         model, tokens, cost, latency)
+                _cache_set(key, content)
+                return content, cost, latency
+            except httpx.HTTPStatusError as e:
+                last_err = LLMError(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+                if e.response.status_code not in (429, 500, 502, 503):
+                    break
+            except Exception as e:
+                last_err = LLMError(str(e))
+                break
+
+    raise last_err or LLMError("Unknown Anthropic error")
+
+
+def _is_claude(model: str) -> bool:
+    return model.startswith("claude-")
+
+
+async def _route(model: str, messages: list[dict],
+                 response_format: dict | None = None,
+                 temperature: float = 0.0) -> tuple[str, float, float]:
+    """Route to Anthropic API or OpenRouter based on model name and available keys."""
+    if _is_claude(model) and _config.anthropic_key:
+        return await _call_anthropic(model, messages, temperature)
+    return await _call(model, messages, response_format, temperature)
+
+
+# ── OpenRouter HTTP call ───────────────────────────────────────────────────────
 
 async def _call(model: str, messages: list[dict], response_format: dict | None = None,
                 temperature: float = 0.2) -> tuple[str, float, float]:
@@ -224,7 +311,7 @@ async def extract(prompt: str, schema: dict) -> dict:
 
     extract_model = _config.extract_model
     try:
-        content, cost, latency = await _call(extract_model, messages, response_format, temperature=0.0)
+        content, cost, latency = await _route(extract_model, messages, response_format, temperature=0.0)
     except LLMError as e:
         if extract_model != _config.model:
             log.warning("Extract model %s failed (%s), falling back to %s", extract_model, e, _config.model)
@@ -283,7 +370,7 @@ async def narrate(prompt: str) -> str:
     # Use the dedicated narration model (may differ from worker model)
     narrate_model = _config.narrate_model
     try:
-        content, _, _ = await _call(narrate_model, messages, temperature=0.0)
+        content, _, _ = await _route(narrate_model, messages, temperature=0.0)
     except LLMError as e:
         if narrate_model != _config.model:
             log.warning("Narrate model %s failed (%s), falling back to %s", narrate_model, e, _config.model)
