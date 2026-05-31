@@ -216,7 +216,7 @@ export function HUD({ state, onStartRun }: HUDProps) {
                   fontFamily: '"Courier New", monospace',
                   cursor: 'pointer', letterSpacing: '0.08em',
                 }}>
-                >> DOWNLOAD PDF REPORT
+                {'>> DOWNLOAD PDF REPORT'}
               </button>
             )}
 
