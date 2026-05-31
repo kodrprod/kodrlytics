@@ -89,16 +89,22 @@ async def extract_financials(filename: str, content: bytes,
         try:
             raw = json.loads(content.decode("utf-8"))
 
-            # Detect SEC EDGAR company facts format
+            # Detect SEC EDGAR company facts format — parse and return directly (no LLM)
             if "facts" in raw and "entityName" in raw:
                 log.info("Intake: detected SEC EDGAR XBRL format in %s", filename)
                 raw = parsers.parse_sec_edgar_json(raw)
                 log.info("Intake: SEC EDGAR parsed: company=%s, periods=%s",
                          raw.get("company_name"), raw.get("income_statement", {}).get("periods", []))
+                financials = _build_financials(raw)
+                recon = reconcile(financials)
+                log.info("Intake: SEC EDGAR loaded. Periods=%s recon=%s",
+                         [p.label for p in financials.income_statement.periods],
+                         "PASS" if recon.passed else f"FAIL ({len(recon.errors)} errors)")
+                return ExtractionResult(financials, recon, llm_calls=0, raw_extracted=raw)
 
             financials = _build_financials(raw)
 
-            # Validate: reject silently-empty extractions
+            # Validate: reject silently-empty canonical JSON
             if not financials.income_statement.periods:
                 raise ValueError("No financial periods found — JSON does not match canonical schema")
             if not any(financials.income_statement.revenue.values()):
@@ -106,7 +112,7 @@ async def extract_financials(filename: str, content: bytes,
 
             recon = reconcile(financials)
             log.info("Intake: loaded %s directly (no LLM). Periods=%s recon=%s",
-                     filename, financials.income_statement.periods,
+                     filename, [p.label for p in financials.income_statement.periods],
                      "PASS" if recon.passed else f"FAIL ({len(recon.errors)} errors)")
             return ExtractionResult(financials, recon, llm_calls=0, raw_extracted=raw)
         except Exception as e:
@@ -150,23 +156,33 @@ async def extract_financials(filename: str, content: bytes,
 def _build_financials(raw: dict) -> CompanyFinancials:
     """Convert raw extracted dict to CompanyFinancials, handling nulls gracefully."""
     def _clean_dict(d: dict | None) -> dict:
-        """Replace None values with 0.0 in period dicts (required fields)."""
         if not d:
             return {}
         return {k: (v if v is not None else 0.0) for k, v in d.items()}
 
     def _optional_dict(d: dict | None) -> dict:
-        """Keep None values for optional fields like D&A."""
         if not d:
             return {}
         return {k: v for k, v in d.items()}
+
+    def _to_periods(raw_periods: list) -> list:
+        """Accept both string years ('2023') and Period dicts ({'year':2023,'label':'2023'})."""
+        result = []
+        for p in raw_periods:
+            if isinstance(p, str):
+                result.append({"year": int(p), "label": p})
+            elif isinstance(p, dict) and "label" not in p and "year" in p:
+                result.append({"year": p["year"], "label": str(p["year"])})
+            else:
+                result.append(p)
+        return result
 
     is_raw = raw.get("income_statement", {})
     bs_raw = raw.get("balance_sheet", {})
     cf_raw = raw.get("cash_flow_statement")
 
     income = {
-        "periods": is_raw.get("periods", []),
+        "periods": _to_periods(is_raw.get("periods", [])),
         "revenue":              _clean_dict(is_raw.get("revenue")),
         "cost_of_goods_sold":   _clean_dict(is_raw.get("cost_of_goods_sold")),
         "gross_profit":         _clean_dict(is_raw.get("gross_profit")),
@@ -181,7 +197,7 @@ def _build_financials(raw: dict) -> CompanyFinancials:
     }
 
     balance = {
-        "periods": bs_raw.get("periods", []),
+        "periods": _to_periods(bs_raw.get("periods", [])),
         "cash":                       _clean_dict(bs_raw.get("cash")),
         "accounts_receivable":        _clean_dict(bs_raw.get("accounts_receivable")),
         "inventory":                  _clean_dict(bs_raw.get("inventory")),
