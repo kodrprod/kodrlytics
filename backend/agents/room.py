@@ -74,26 +74,26 @@ class Room:
                 await emit({
                     "event_type": "worker_learning", "run_id": run_id,
                     "room_name": self.name, "stage": self.stage,
-                    "worker_id": w.id, "queries": t.search_queries[:2],
+                    "worker_id": w.worker_id, "queries": t.search_queries[:2],
                 })
                 learned = await w.learn(t.search_queries)
 
                 await emit({
                     "event_type": "worker_working", "run_id": run_id,
                     "room_name": self.name, "stage": self.stage,
-                    "worker_id": w.id, "task_title": t.title,
+                    "worker_id": w.worker_id, "task_title": t.title,
                 })
                 t.result = await w.work(t, context_str, learned)
                 t.status = "done"
             except Exception as e:
-                log.warning("Worker %s failed: %s", w.id, e)
+                log.warning("Worker %s failed: %s", w.worker_id, e)
                 t.result = f"[Worker error: {e}]"
                 t.status = "failed"
             finally:
                 await emit({
                     "event_type": "worker_done", "run_id": run_id,
                     "room_name": self.name, "stage": self.stage,
-                    "worker_id": w.id, "task_title": t.title,
+                    "worker_id": w.worker_id, "task_title": t.title,
                 })
 
         for i in range(0, len(workers), _BATCH_SIZE):

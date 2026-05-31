@@ -130,8 +130,8 @@ def parse_sec_edgar_json(data: dict) -> dict:
     if not revenue:
         raise ValueError("No annual revenue data found in SEC EDGAR JSON")
 
-    # Use last 4 fiscal years
-    periods = sorted(sorted(revenue.keys(), reverse=True)[:4])
+    # Use last 8 fiscal years for richer trend analysis
+    periods = sorted(sorted(revenue.keys(), reverse=True)[:8])
     log.info("SEC EDGAR parser: using periods %s", periods)
 
     def _f(d: dict) -> dict[str, float]:

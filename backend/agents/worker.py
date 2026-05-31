@@ -1,4 +1,4 @@
-"""Worker AI: web search (learn) + LLM narration (work)."""
+"""Worker AI: web search (learn) + deep LLM analysis (work)."""
 from __future__ import annotations
 import logging
 
@@ -15,30 +15,43 @@ class Worker:
         self.room_name = room_name
 
     async def learn(self, queries: list[str]) -> str:
-        """Run web searches for each query (max 2), return up to 1000 chars."""
+        """Run web searches for each query (max 3), return up to 2000 chars."""
         snippets: list[str] = []
-        for q in queries[:2]:
-            results = await ddg_search(q, max_results=3)
+        for q in queries[:3]:
+            results = await ddg_search(q, max_results=4)
             for r in results:
                 text = r.get("Text", "")
                 if text:
                     snippets.append(text)
-        combined = " | ".join(snippets)
-        return combined[:1000]
+        return " | ".join(snippets)[:2000]
 
     async def work(self, task: Task, room_context: str, learned: str) -> str:
-        """Narrate the task result using room context and research. Returns 3-6 sentences."""
+        """Produce a thorough multi-section financial analysis (400-600 words)."""
         prompt = (
-            f"You are worker {self.worker_id} in the {self.room_name} room of a financial analysis pipeline.\n\n"
-            f"TASK: {task.title}\n"
-            f"DESCRIPTION: {task.description}\n\n"
-            f"ROOM CONTEXT:\n{room_context}\n\n"
-            f"RESEARCH FINDINGS:\n{learned or 'No web research available.'}\n\n"
-            f"Complete your task in 3-6 sentences. Be specific, professional, and reference the data provided. "
-            f"Do NOT invent numbers not in the context."
+            f"You are a senior financial analyst, Worker {self.worker_id}, "
+            f"in the {self.room_name} room of a financial analysis team.\n\n"
+            f"YOUR TASK: {task.title}\n"
+            f"TASK DETAILS: {task.description}\n\n"
+            f"FINANCIAL DATA:\n{room_context[:6000]}\n\n"
+            f"EXTERNAL RESEARCH:\n{learned or '(No external research available.)'}\n\n"
+            f"Write a thorough, professional financial analysis structured as follows:\n\n"
+            f"**FINDINGS**\n"
+            f"4-6 numbered findings with exact figures, specific years, and percentage changes "
+            f"from the data. Each finding must cite specific numbers.\n\n"
+            f"**ANALYSIS**\n"
+            f"Deep interpretation: root causes, multi-year trends, anomalies, patterns. "
+            f"What does the trajectory tell us? Compare periods explicitly.\n\n"
+            f"**RISKS & OPPORTUNITIES**\n"
+            f"Concrete risks and opportunities with specific figures and timeframes.\n\n"
+            f"**RECOMMENDATIONS**\n"
+            f"2-3 prioritised, actionable steps with expected financial impact.\n\n"
+            f"REQUIREMENTS: minimum 400 words, cite specific numbers and years throughout, "
+            f"professional board-level tone. Do NOT fabricate any figures not in the data above."
         )
         try:
-            return await _llm.narrate(prompt)
+            result = await _llm.narrate(prompt)
+            log.info("  Worker %s [%s] completed: %d chars", self.worker_id, task.title[:30], len(result))
+            return result
         except Exception as e:
             log.warning("Worker %s work() failed: %s", self.worker_id, e)
             return f"[Worker {self.worker_id} error: {e}]"
