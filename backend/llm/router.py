@@ -41,10 +41,12 @@ _CACHE_PATH = Path(__file__).parent.parent.parent / "dev.db"
 _API_KEY       = os.getenv("OPENROUTER_API_KEY", "")
 _MODEL         = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
 _FALLBACK      = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
-# NARRATE_MODEL is used for final synthesis/narration (CEO, managers, room reports).
-# Set to a premium model (e.g. anthropic/claude-sonnet-4-5) to get high-quality,
-# instruction-following narration on top of pre-computed facts — without paying for
-# every mechanical worker call.
+# EXTRACT_MODEL: reads raw documents and populates FactsStore — the most accuracy-critical
+# call in the pipeline. A wrong read here propagates into every room report.
+# Set to a premium model for production; free model is fine for testing cached data.
+_EXTRACT_MODEL = os.getenv("EXTRACT_MODEL", _MODEL)
+# NARRATE_MODEL: used for all synthesis (workers, managers, CEO).
+# Set to a premium model to get instruction-following narration on pre-verified facts.
 _NARRATE_MODEL = os.getenv("NARRATE_MODEL", _MODEL)
 _DATA_MODE     = os.getenv("DATA_MODE", "test")
 
@@ -62,12 +64,13 @@ class LLMError(Exception):
 
 class RouterConfig:
     def __init__(self):
-        self.api_key       = _API_KEY
-        self.model         = _MODEL
-        self.narrate_model = _NARRATE_MODEL
-        self.fallback      = _FALLBACK
-        self.data_mode     = _DATA_MODE
-        self.use_cache     = (_DATA_MODE == "test")
+        self.api_key        = _API_KEY
+        self.model          = _MODEL
+        self.extract_model  = _EXTRACT_MODEL
+        self.narrate_model  = _NARRATE_MODEL
+        self.fallback       = _FALLBACK
+        self.data_mode      = _DATA_MODE
+        self.use_cache      = (_DATA_MODE == "test")
 
     def _check_real_mode(self, model: str) -> None:
         if self.data_mode == "real" and ":free" in model:
@@ -201,6 +204,7 @@ async def extract(prompt: str, schema: dict) -> dict:
     """
     Extract structured data from text. Enforces JSON-schema output.
     Returns parsed dict. Raises LLMError if output is invalid JSON or fails schema.
+    Uses EXTRACT_MODEL — set this to a premium model for production accuracy.
     """
     import jsonschema
 
@@ -218,7 +222,15 @@ async def extract(prompt: str, schema: dict) -> dict:
     ]
     response_format = {"type": "json_object"}
 
-    content, cost, latency = await _call_with_fallback(messages, response_format, temperature=0.0)
+    extract_model = _config.extract_model
+    try:
+        content, cost, latency = await _call(extract_model, messages, response_format, temperature=0.0)
+    except LLMError as e:
+        if extract_model != _config.model:
+            log.warning("Extract model %s failed (%s), falling back to %s", extract_model, e, _config.model)
+            content, cost, latency = await _call_with_fallback(messages, response_format, temperature=0.0)
+        else:
+            raise
 
     # Strip markdown fences if present
     content = content.strip()
