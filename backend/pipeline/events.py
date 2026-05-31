@@ -73,7 +73,62 @@ class RunCompleteEvent(BaseEvent):
     narrative: str
 
 
+class RoomOpenedEvent(BaseEvent):
+    event_type: Literal["room_opened"] = "room_opened"
+    room_name: str
+    stage: int
+    worker_count: int
+    task_count: int
+
+
+class WorkerSpawnedEvent(BaseEvent):
+    event_type: Literal["worker_spawned"] = "worker_spawned"
+    room_name: str
+    stage: int
+    worker_id: str
+    task_title: str
+
+
+class WorkerLearningEvent(BaseEvent):
+    event_type: Literal["worker_learning"] = "worker_learning"
+    room_name: str
+    stage: int
+    worker_id: str
+    queries: list[str]
+
+
+class WorkerWorkingEvent(BaseEvent):
+    event_type: Literal["worker_working"] = "worker_working"
+    room_name: str
+    stage: int
+    worker_id: str
+    task_title: str
+
+
+class WorkerDoneEvent(BaseEvent):
+    event_type: Literal["worker_done"] = "worker_done"
+    room_name: str
+    stage: int
+    worker_id: str
+    task_title: str
+
+
+class ManagerWritingEvent(BaseEvent):
+    event_type: Literal["manager_writing"] = "manager_writing"
+    room_name: str
+    stage: int
+
+
+class RoomClosedEvent(BaseEvent):
+    event_type: Literal["room_closed"] = "room_closed"
+    room_name: str
+    stage: int
+    worker_count: int
+
+
 PipelineEvent = Union[
     StageStartedEvent, DataPassedEvent, FindingCreatedEvent,
-    FlagRaisedEvent, StageDoneEvent, RunErrorEvent, RunCompleteEvent
+    FlagRaisedEvent, StageDoneEvent, RunErrorEvent, RunCompleteEvent,
+    RoomOpenedEvent, WorkerSpawnedEvent, WorkerLearningEvent,
+    WorkerWorkingEvent, WorkerDoneEvent, ManagerWritingEvent, RoomClosedEvent,
 ]

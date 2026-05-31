@@ -180,4 +180,61 @@ async def download_report(job_id: str):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.2.0"}
+    return {"status": "ok", "version": "0.3.0"}
+
+
+# ── Room-based multi-agent pipeline ───────────────────────────────────────────
+
+@app.post("/runs-rooms", response_model=RunCreated)
+async def create_rooms_run(file: UploadFile = File(None)):
+    """Submit a file for the room-based agent pipeline. Returns run_id for /ws-rooms/{run_id}.
+    If no file is uploaded, the built-in Mustermann GmbH sample is used."""
+    if file and file.filename:
+        content = await file.read()
+        filename = file.filename
+    else:
+        content = SAMPLE_PATH.read_bytes()
+        filename = "mustermann_gmbh.json"
+    run_id = str(uuid.uuid4())
+    _pending_runs[run_id] = (filename, content)
+    return RunCreated(run_id=run_id)
+
+
+@app.websocket("/ws-rooms/{run_id}")
+async def rooms_pipeline_ws(websocket: WebSocket, run_id: str):
+    """Room-based multi-agent pipeline — 6 rooms, manager + workers, web search."""
+    from datetime import datetime, timezone
+    await websocket.accept()
+
+    if run_id not in _pending_runs:
+        await websocket.send_json({
+            "event_type": "run_error", "run_id": run_id, "stage": "api",
+            "error": f"Unknown run_id: {run_id}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        await websocket.close()
+        return
+
+    filename, content = _pending_runs.pop(run_id)
+
+    async def emit(event_dict: dict) -> None:
+        event_dict.setdefault("run_id", run_id)
+        event_dict.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+        try:
+            await websocket.send_json(event_dict)
+        except Exception:
+            pass
+
+    try:
+        from backend.agents.pipeline import run_room_pipeline
+        await run_room_pipeline(filename, content, run_id, emit)
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from rooms run %s", run_id)
+    except Exception as e:
+        logger.error("Rooms pipeline error for %s: %s", run_id, e)
+        await emit({"event_type": "run_error", "stage": "pipeline", "error": str(e)})
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass

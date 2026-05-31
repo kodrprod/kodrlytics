@@ -1,7 +1,26 @@
 export type StageId = 'intake' | 'analysis' | 'benchmark' | 'strategy' | 'briefing'
 export type HubState = 'idle' | 'working' | 'done' | 'flagged' | 'error'
 export type Severity = 'warning' | 'critical'
+export type WorkerStatus = 'idle' | 'learning' | 'working' | 'stuck' | 'done'
 
+// ── Room / worker state ────────────────────────────────────────────────────────
+export interface WorkerInfo {
+  worker_id: string
+  task_title: string
+  status: WorkerStatus
+  spawnedAt: number   // Date.now()
+}
+
+export interface RoomInfo {
+  name: string
+  stage: number
+  status: 'idle' | 'active' | 'complete' | 'error'
+  workers: WorkerInfo[]
+  task_count: number
+  tasks_done: number
+}
+
+// ── Existing pipeline events ───────────────────────────────────────────────────
 export interface BaseEvent {
   run_id: string
   timestamp: string
@@ -71,6 +90,60 @@ export interface RunCompleteEvent extends BaseEvent {
   narrative: string
 }
 
+// ── Room-based pipeline events (from /ws-rooms/{run_id}) ──────────────────────
+export interface RoomOpenedEvent extends BaseEvent {
+  event_type: 'room_opened'
+  room_name: string
+  stage: number
+  worker_count: number
+  task_count: number
+}
+
+export interface WorkerSpawnedEvent extends BaseEvent {
+  event_type: 'worker_spawned'
+  room_name: string
+  stage: number
+  worker_id: string
+  task_title: string
+}
+
+export interface WorkerLearningEvent extends BaseEvent {
+  event_type: 'worker_learning'
+  room_name: string
+  stage: number
+  worker_id: string
+  queries: string[]
+}
+
+export interface WorkerWorkingEvent extends BaseEvent {
+  event_type: 'worker_working'
+  room_name: string
+  stage: number
+  worker_id: string
+  task_title: string
+}
+
+export interface WorkerDoneEvent extends BaseEvent {
+  event_type: 'worker_done'
+  room_name: string
+  stage: number
+  worker_id: string
+  task_title: string
+}
+
+export interface ManagerWritingEvent extends BaseEvent {
+  event_type: 'manager_writing'
+  room_name: string
+  stage: number
+}
+
+export interface RoomClosedEvent extends BaseEvent {
+  event_type: 'room_closed'
+  room_name: string
+  stage: number
+  worker_count: number
+}
+
 export type PipelineEvent =
   | StageStartedEvent
   | DataPassedEvent
@@ -79,3 +152,10 @@ export type PipelineEvent =
   | StageDoneEvent
   | RunErrorEvent
   | RunCompleteEvent
+  | RoomOpenedEvent
+  | WorkerSpawnedEvent
+  | WorkerLearningEvent
+  | WorkerWorkingEvent
+  | WorkerDoneEvent
+  | ManagerWritingEvent
+  | RoomClosedEvent
