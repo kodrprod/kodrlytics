@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "nace_prefix": "F",
+    "sector": "Construction (Baugewerbe)",
+    "status": "PLACEHOLDER — no verified benchmark data loaded",
+    "note": "Replace with real Bundesbank/ECB BACH or Destatis data before production use. Until populated, all F-sector peer comparisons will correctly report [gap — peer benchmark unavailable]."
+  },
+  "nace_prefix": "F",
+  "metrics": {}
+}

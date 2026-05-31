@@ -76,14 +76,119 @@ class ExtractionResult:
         return self.reconciliation.passed
 
 
+def _is_construction_dataset(ctx) -> bool:
+    """Heuristic: is this a construction/Baugewerbe company dataset?"""
+    name_lower = (ctx.company_name or "").lower()
+    construction_terms = ("bau", "construction", "gmbh", "baufirma", "bauunternehmen",
+                          "hoch", "tief", "sanierung", "projekt")
+    return any(t in name_lower for t in construction_terms)
+
+
+async def _extract_from_zip(filename: str, content: bytes,
+                             company_hint: str) -> "ExtractionResult":
+    """
+    Extract CompanyFinancials from a ZIP dataset.
+
+    Rather than passing raw ZIP bytes (binary garbage) to the LLM, we first
+    call ingest_zip to get structured text, then run LLM extraction on the
+    actual human-readable content.
+    """
+    from backend.intake.zip_ingester import ingest_zip
+    ctx = ingest_zip(filename, content)
+    log.info("ZIP extraction: company=%r, files=%d, years=%s",
+             ctx.company_name, ctx.total_files, ctx.years)
+
+    # Build readable document text from parsed (non-binary) data
+    doc_parts: list[str] = []
+
+    # Annual reports are the primary P&L source
+    for year in sorted(ctx.annual_reports):
+        text = ctx.annual_reports[year].strip()
+        if text:
+            doc_parts.append(f"=== Annual Report {year} ===\n{text}")
+
+    # Accounting journals for cross-reference
+    for year in sorted(ctx.accounting_journals):
+        text = ctx.accounting_journals[year].strip()
+        if text:
+            doc_parts.append(f"=== Accounting Journal {year} (sample) ===\n{text}")
+
+    # Payroll data for headcount/salary cross-reference
+    for year in sorted(ctx.payroll_journals):
+        text = ctx.payroll_journals[year].strip()
+        if text:
+            doc_parts.append(f"=== Payroll Journal {year} (sample) ===\n{text}")
+
+    if not doc_parts:
+        log.warning("ZIP %s: no parseable content — returning gap financials", filename)
+        return _gap_extraction_result(ctx.company_name or filename, "F" if _is_construction_dataset(ctx) else "C")
+
+    document_text = "\n\n".join(doc_parts)
+    hint = company_hint or ctx.company_name or ""
+    log.info("ZIP extraction: %d chars from %d annual reports, %d journals",
+             len(document_text), len(ctx.annual_reports), len(ctx.accounting_journals))
+
+    llm_calls = 0
+    last_recon: ReconciliationResult | None = None
+    last_raw: dict = {}
+
+    for attempt in range(MAX_RETRIES + 1):
+        prompt = (
+            _build_extraction_prompt(document_text, hint)
+            if attempt == 0
+            else _build_retry_prompt(document_text, last_recon.errors, attempt)
+        )
+        log.info("ZIP extraction: LLM attempt %d", attempt + 1)
+        raw = await router.extract(prompt, EXTRACTION_SCHEMA)
+        llm_calls += 1
+        last_raw = raw
+
+        # Default NACE to 'F' (construction) for construction ZIPs, not 'C'
+        if _is_construction_dataset(ctx) and raw.get("nace_code", "C") in ("C", ""):
+            raw["nace_code"] = "F"
+
+        financials = _build_financials(raw)
+        recon = reconcile(financials)
+        last_recon = recon
+
+        if recon.passed:
+            log.info("ZIP extraction: reconciliation passed on attempt %d", attempt + 1)
+            return ExtractionResult(financials, recon, llm_calls, raw)
+        log.warning("ZIP extraction: reconciliation failed attempt %d (%d errors)",
+                    attempt + 1, len(recon.errors))
+
+    return ExtractionResult(_build_financials(last_raw), last_recon, llm_calls, last_raw)
+
+
+def _gap_extraction_result(company_name: str, nace_code: str = "C") -> "ExtractionResult":
+    """Return an ExtractionResult with all-gap financials — used when no parseable data found."""
+    from backend.schema.models import IncomeStatement, BalanceSheet, CompanyFinancials
+    fin = CompanyFinancials(
+        company_name=company_name,
+        currency="EUR",
+        nace_code=nace_code,
+        reporting_standard="HGB",
+        income_statement=IncomeStatement(periods=[]),
+        balance_sheet=BalanceSheet(periods=[]),
+    )
+    recon = ReconciliationResult(passed=True, errors=[])
+    return ExtractionResult(fin, recon, llm_calls=0, raw_extracted={})
+
+
 async def extract_financials(filename: str, content: bytes,
                               company_hint: str = "") -> ExtractionResult:
     """
     Full intake pipeline:
-      1. If .json: try direct parse as CompanyFinancials (no LLM needed)
-      2. Otherwise: parse document → LLM extraction → reconciliation gate
-      3. If reconciliation fails: one retry with errors surfaced
+      1. If .zip: use ingest_zip to build structured text, then LLM-extract from text (not binary)
+      2. If .json: try direct parse as CompanyFinancials (no LLM needed)
+      3. Otherwise: parse document → LLM extraction → reconciliation gate
+      4. If reconciliation fails: one retry with errors surfaced
     """
+    # ZIP files: must NOT pass raw bytes to LLM (they are binary garbage).
+    # Use ingest_zip first to get structured text, then extract from that.
+    if filename.lower().endswith(".zip"):
+        return await _extract_from_zip(filename, content, company_hint)
+
     # Fast path: JSON files — either canonical schema or SEC EDGAR XBRL format
     if filename.lower().endswith(".json"):
         try:

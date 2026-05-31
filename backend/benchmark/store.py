@@ -47,3 +47,10 @@ class BenchmarkStore:
 
     def available_nace_codes(self) -> list[str]:
         return list(self._data.keys())
+
+    def has_any_data(self, nace_code: str) -> bool:
+        """Return True if any benchmark data exists for this NACE code or its prefixes."""
+        for key in [nace_code, nace_code[:2] if len(nace_code) >= 2 else "", nace_code[:1]]:
+            if key and key in self._data and self._data[key]:
+                return True
+        return False

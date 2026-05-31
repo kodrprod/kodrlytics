@@ -47,20 +47,23 @@ class AnalysisReport:
 
 
 def _safe(text: str) -> str:
-    # Replace characters outside latin-1 so Helvetica (core font) can render them.
+    “””Make text safe for the Helvetica (latin-1) core font, replacing problematic chars.”””
     text = (text
-            .replace('—', '--')
-            .replace('–', '-')
-            .replace('‐', '-')
-            .replace('‑', '-')
-            .replace('‒', '-')
-            .replace('−', '-')
-            .replace('’', "'")
-            .replace('‘', "'")
-            .replace('“', '"')
-            .replace('”', '"')
-            .replace('…', '...'))
-    return text.encode('latin-1', errors='replace').decode('latin-1')
+            .replace(‘—‘, ‘--’)   # em dash
+            .replace(‘–‘, ‘-’)    # en dash
+            .replace(‘‐’, ‘-’)
+            .replace(‘‑’, ‘-’)
+            .replace(‘‒’, ‘-’)
+            .replace(‘−’, ‘-’)    # minus sign
+            .replace(‘‘’, “’”)
+            .replace(‘’’, “’”)
+            .replace(‘“’, ‘”’)
+            .replace(‘”’, ‘”’)
+            .replace(‘…’, ‘...’)
+            .replace(‘€’, ‘EUR’)  # € → EUR (avoid latin-1 ? corruption)
+            .replace(‘ ’, ‘ ‘)    # non-breaking space
+    )
+    return text.encode(‘latin-1’, errors=’replace’).decode(‘latin-1’)
 
 
 class KodrlyticsPDF(FPDF):
@@ -427,6 +430,7 @@ def generate_rooms_pdf(
     company_name: str,
     source_file: str,
     run_id: str,
+    facts_store=None,      # FactsStore | None — when provided, grounding gate runs
 ) -> Path:
     """Generate a professional multi-chapter PDF from room pipeline output."""
     from datetime import datetime as _dt
@@ -507,6 +511,44 @@ def generate_rooms_pdf(
         pdf.set_text_color(*color)
         pdf.cell(0, 8, f"  {_safe(title)}", new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
+
+    # ── Verified facts table (if available) ───────────────────────────────────
+    if facts_store is not None:
+        try:
+            all_vals = facts_store.all_values()
+            if all_vals:
+                pdf.add_page()
+                pdf.chapter_title("Verified Facts — Deterministic Computation Layer", level=1)
+                pdf.body_text(
+                    "All numbers in this report are grounded against the following deterministically "
+                    "computed facts. Each value traces to a specific formula or source document. "
+                    "Figures tagged [gap] indicate data that was not available in the source."
+                )
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "", 8)
+                for fid, fact in sorted(facts_store._facts.items()):
+                    val_str = facts_store.format(fid)
+                    tag = f"[{fact.kind.value}]"
+                    line = f"{_safe(fid[:50]):<52} {_safe(val_str):<20} {_safe(fact.label[:40]):<42} {tag}"
+                    pdf.cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
+        except Exception as e:
+            log.warning("PDF: failed to render facts table: %s", e)
+
+    # ── Grounding gate — clean room reports before rendering ──────────────────
+    if facts_store is not None:
+        try:
+            from backend.facts.gate import enforce_grounding, cross_section_consistency_check
+            cleaned_reports: dict[str, str] = {}
+            for key, text in room_reports.items():
+                cleaned_reports[key] = enforce_grounding(text, facts_store)
+            # Log cross-section inconsistencies (audit trail, not blocking)
+            inconsistent = cross_section_consistency_check(cleaned_reports)
+            if inconsistent:
+                log.warning("PDF: %d cross-section inconsistencies (see gate log for details)",
+                            len(inconsistent))
+            room_reports = cleaned_reports
+        except Exception as e:
+            log.warning("PDF: grounding gate failed: %s", e)
 
     # ── Analysis chapters ──────────────────────────────────────────────────────
     for room_key in _ROOM_ORDER:

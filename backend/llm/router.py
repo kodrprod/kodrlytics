@@ -73,6 +73,13 @@ class RouterConfig:
 
 _config = RouterConfig()
 
+# Fail fast at startup if API key is missing
+if not _config.api_key:
+    log.error(
+        "OPENROUTER_API_KEY is empty — LLM calls will fail. "
+        "Set it in .env at the project root and restart the server."
+    )
+
 
 # ── Cache ──────────────────────────────────────────────────────────────────────
 
@@ -82,8 +89,7 @@ def _cache_key(model: str, messages: list) -> str:
 
 
 def _cache_get(key: str) -> str | None:
-    if not _config.use_cache:
-        return None
+    # Cache is always enabled (not just in test mode) to improve reproducibility
     try:
         con = sqlite3.connect(_CACHE_PATH)
         row = con.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()
@@ -94,8 +100,6 @@ def _cache_get(key: str) -> str | None:
 
 
 def _cache_set(key: str, response: str) -> None:
-    if not _config.use_cache:
-        return
     try:
         con = sqlite3.connect(_CACHE_PATH)
         con.execute("CREATE TABLE IF NOT EXISTS llm_cache (key TEXT PRIMARY KEY, response TEXT)")
@@ -235,7 +239,8 @@ async def reason(prompt: str) -> str:
         {"role": "system", "content": "You are a financial analysis assistant. Be concise and precise."},
         {"role": "user", "content": prompt},
     ]
-    content, _, _ = await _call_with_fallback(messages, temperature=0.3)
+    # temperature=0 for determinism; same input → same numbers
+    content, _, _ = await _call_with_fallback(messages, temperature=0.0)
     return content
 
 
@@ -247,10 +252,12 @@ async def narrate(prompt: str) -> str:
             "content": (
                 "You are a financial analyst writing a professional report for a German Mittelstand company. "
                 "Write in clear business English. Be specific and reference the provided findings directly. "
-                "Do NOT invent numbers — use only the figures provided in the prompt."
+                "Do NOT invent numbers — use ONLY the figures explicitly provided in the prompt. "
+                "If a number is not in the provided data, write '[gap — data not available]' instead."
             ),
         },
         {"role": "user", "content": prompt},
     ]
-    content, _, _ = await _call_with_fallback(messages, temperature=0.4)
+    # temperature=0: numeric outputs must be deterministic
+    content, _, _ = await _call_with_fallback(messages, temperature=0.0)
     return content

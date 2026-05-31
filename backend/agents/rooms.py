@@ -801,16 +801,30 @@ class BenchmarkingRoom(Room):
         return tasks
 
     def build_context_str(self, ctx: PipelineContext) -> str:
-        parts = [_financial_table(ctx)]
-        if ctx.benchmark:
-            f = ctx.financials
-            flags_text = "\n".join(
-                f"  [{fl.severity.upper()}] {fl.flag_type}: {fl.message} "
-                f"(co: {fl.company_value:.2f}, med: {fl.peer_median:.2f})"
-                for fl in ctx.benchmark.flags
+        parts = [_financial_table(ctx), _ratio_table(ctx)]
+
+        # Peer benchmark availability notice — workers must respect this
+        nace = ctx.financials.nace_code if ctx.financials else "F"
+        from backend.benchmark.store import BenchmarkStore
+        store = BenchmarkStore(data_dir=_BENCH_DIR)
+        has_peers = store.has_any_data(nace)
+        if has_peers:
+            if ctx.benchmark:
+                flags_text = "\n".join(
+                    f"  [{fl.severity.upper()}] {fl.flag_type}: {fl.message} "
+                    f"(co: {fl.company_value:.2f}, med: {fl.peer_median:.2f})"
+                    for fl in ctx.benchmark.flags
+                )
+                parts.append(f"\nFLAGS FROM PEER BENCHMARKS (verified data):\n{flags_text}")
+        else:
+            parts.append(
+                f"\nPEER BENCHMARK STATUS: NO peer benchmark data exists for NACE code '{nace}' "
+                f"in this system. You MUST write '[gap — peer benchmark unavailable]' for any "
+                f"claim that requires peer comparison. Do NOT invent market sizes, sector averages, "
+                f"CAGRs, revenue bases, or competitor figures. Only discuss the company's own "
+                f"verified financials from the facts table."
             )
-            parts.append(f"\nFLAGS:\n{flags_text}")
-        parts.append(_ratio_table(ctx))
+
         return "\n\n".join(p for p in parts if p)
 
 

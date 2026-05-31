@@ -36,3 +36,5 @@ class PipelineContext:
     room_briefs: dict[str, str] = field(default_factory=dict)
     # Accumulated room reports
     room_reports: dict[str, str] = field(default_factory=dict)
+    # Single source of truth for all verified numbers (built after Analysis runs)
+    facts_store: Optional[Any] = None   # FactsStore

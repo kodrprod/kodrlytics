@@ -9,7 +9,7 @@ from backend.agents.manager import RoomManager
 
 log = logging.getLogger(__name__)
 
-_BATCH_SIZE = 4   # max concurrent LLM calls per batch
+_BATCH_SIZE = 6   # max concurrent LLM calls per batch (raised from 4)
 
 
 class Room:
@@ -61,6 +61,14 @@ class Room:
         if ceo_brief:
             context_str = f"CEO BRIEF FOR {self.name.upper()} DEPARTMENT:\n{ceo_brief}\n\n{context_str}"
 
+        # Build facts table for prompt injection
+        facts_table = ""
+        if ctx.facts_store is not None:
+            try:
+                facts_table = ctx.facts_store.render_tables()
+            except Exception as e:
+                log.warning("Room %s: failed to render facts table: %s", self.name, e)
+
         # 4. Spawn workers
         workers: list[Worker] = []
         for i, task in enumerate(tasks):
@@ -89,20 +97,17 @@ class Room:
                     "worker_id": w.worker_id, "task_title": t.title,
                 })
 
-                # Emit round progress events during multi-round work
-                for round_num in range(1, 4):
-                    await asyncio.sleep(0)  # yield to event loop
-                    await emit({
-                        "event_type": "worker_round", "run_id": run_id,
-                        "room_name": self.name, "stage": self.stage,
-                        "worker_id": w.worker_id, "round": round_num,
-                    })
+                await asyncio.sleep(0)  # yield to event loop
 
-                t.result = await w.work(t, context_str, learned)
+                result = await w.work(t, context_str, learned, facts_table=facts_table)
+                # Errors must never become content
+                if "error:" in result.lower() and result.startswith("["):
+                    result = "[gap — analysis unavailable for this section]"
+                t.result = result
                 t.status = "done"
             except Exception as e:
                 log.warning("Worker %s failed: %s", w.worker_id, e)
-                t.result = f"[Worker error: {e}]"
+                t.result = "[gap — analysis unavailable for this section]"
                 t.status = "failed"
             finally:
                 await emit({
@@ -119,7 +124,11 @@ class Room:
         await emit({"event_type": "manager_writing", "run_id": run_id,
                     "room_name": self.name, "stage": self.stage})
         manager = RoomManager(self.name)
-        ctx.room_reports[self.name] = await manager.write_report(tasks, context_str)
+        ctx.room_reports[self.name] = await manager.write_report(
+            tasks, context_str,
+            facts_table=facts_table,
+            facts_store=ctx.facts_store,
+        )
 
         # 7. Close room
         await emit({

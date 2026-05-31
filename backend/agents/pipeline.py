@@ -68,6 +68,31 @@ async def run_room_pipeline(
                 "event_type": "run_error", "run_id": run_id,
                 "stage": room.name, "error": str(e),
             })
+        # Build FactsStore after Analysis room completes (Analysis populates ctx.analysis)
+        if room.name == "Analysis" and ctx.facts_store is None:
+            try:
+                from backend.facts.facts_store import build_facts_store
+                ctx.facts_store = build_facts_store(
+                    analysis=ctx.analysis,
+                    benchmark=ctx.benchmark,
+                    projections=ctx.projections,
+                    financials=ctx.financials,
+                )
+                log.info("Pipeline: FactsStore built with %d facts", len(ctx.facts_store._facts))
+            except Exception as e:
+                log.warning("Pipeline: FactsStore build failed: %s", e)
+        # Rebuild FactsStore after Benchmarking/Strategy to include flags and projections
+        if room.name in ("Benchmarking", "Strategy") and ctx.facts_store is not None:
+            try:
+                from backend.facts.facts_store import build_facts_store
+                ctx.facts_store = build_facts_store(
+                    analysis=ctx.analysis,
+                    benchmark=ctx.benchmark,
+                    projections=ctx.projections,
+                    financials=ctx.financials,
+                )
+            except Exception as e:
+                log.warning("Pipeline: FactsStore rebuild failed after %s: %s", room.name, e)
 
     # ── CEO final synthesis ────────────────────────────────────────────────────
     try:
@@ -77,6 +102,13 @@ async def run_room_pipeline(
                     "message": "CEO writing final executive synthesis..."})
         if ctx.dataset:
             ceo_summary = await ceo.final_synthesis(ctx.room_reports, ctx.dataset)
+            # Apply grounding gate to CEO synthesis before storing
+            if ctx.facts_store is not None:
+                try:
+                    from backend.facts.gate import enforce_grounding
+                    ceo_summary = enforce_grounding(ceo_summary, ctx.facts_store)
+                except Exception as ge:
+                    log.warning("Pipeline: CEO grounding gate failed: %s", ge)
             ctx.room_reports["CEO"] = ceo_summary
         await emit({"event_type": "ceo_done", "run_id": run_id,
                     "message": "CEO synthesis complete."})
@@ -95,7 +127,7 @@ async def run_room_pipeline(
         if not _cn and ctx.dataset:
             _cn = ctx.dataset.company_name
         _cn = _cn or "Company"
-        generate_rooms_pdf(ctx.room_reports, _cn, filename, run_id)
+        generate_rooms_pdf(ctx.room_reports, _cn, filename, run_id, facts_store=ctx.facts_store)
         generate_rooms_docx(ctx.room_reports, _cn, filename, run_id)
         _pdf_url = f"/reports/{run_id}.pdf"
         _docx_url = f"/reports/{run_id}.docx"
