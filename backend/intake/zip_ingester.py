@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Union
 
-from backend.intake.parsers import parse_csv, parse_excel, parse_pdf
+from backend.intake.parsers import parse_csv, parse_docx, parse_excel, parse_pdf
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +35,21 @@ def _extract_year(path_str: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _normalize_german(text: str) -> str:
+    """Strip German umlauts/ß to ASCII base chars for substring pattern matching.
+
+    Stripping (ä→a) rather than expanding (ä→ae) ensures patterns like "vertrag"
+    still match "Verträge" (vertrage) after normalization.
+    """
+    return (text.lower()
+            .replace("ä", "a").replace("ö", "o").replace("ü", "u")
+            .replace("ß", "ss"))
+
+
 def _folder_matches(folder: str, patterns: tuple[str, ...]) -> bool:
     folder_lower = folder.lower()
-    return any(p in folder_lower for p in patterns)
+    folder_norm = _normalize_german(folder)
+    return any(p in folder_lower or p in folder_norm for p in patterns)
 
 
 def _truncate(text: str, max_chars: int) -> str:
@@ -56,11 +68,27 @@ def _parse_file(name: str, data: bytes) -> str:
             return parse_excel(data)
         if ext == ".csv":
             return parse_csv(data)
+        if ext == ".docx":
+            return parse_docx(data)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to parse %s: %s", name, exc)
         return ""
     log.debug("Skipping unsupported extension %s for %s", ext, name)
     return ""
+
+
+def _fix_zip_filename(name: str) -> str:
+    """Recover UTF-8 filenames that were stored without the UTF-8 flag.
+
+    Python's zipfile decodes untagged filenames using cp437. When the creator
+    used UTF-8 bytes without setting bit 11 of the general-purpose bit flag
+    (common in Windows-created ZIPs), non-ASCII chars become mojibake.
+    Re-encoding as cp437 and decoding as UTF-8 recovers the original name.
+    """
+    try:
+        return name.encode("cp437").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return name
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +259,10 @@ def ingest_zip(filename: str, content: bytes) -> DatasetContext:
         return DatasetContext(company_name=company_name_fallback)
 
     with zf:
-        all_names = [n for n in zf.namelist() if not n.endswith("/")]
+        # Fix cp437 mojibake on filenames stored without the UTF-8 flag
+        all_names = [_fix_zip_filename(n) for n in zf.namelist() if not n.endswith("/")]
+        # Build mapping: fixed name → original name (for zf.read)
+        _name_map = {_fix_zip_filename(n): n for n in zf.namelist()}
 
         # Detect company name from the top-level folder (if present)
         company_name = company_name_fallback
@@ -258,9 +289,9 @@ def ingest_zip(filename: str, content: bytes) -> DatasetContext:
             if year:
                 all_years.add(year)
 
-            # Read raw bytes
+            # Read raw bytes using the original (un-fixed) filename as stored in ZIP
             try:
-                data = zf.read(name)
+                data = zf.read(_name_map.get(name, name))
             except Exception as exc:  # noqa: BLE001
                 log.warning("Cannot read %s from ZIP: %s", name, exc)
                 continue

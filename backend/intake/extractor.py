@@ -29,11 +29,12 @@ Rules:
 - If a line item is not present in the source, use null.
 - For German HGB filings, cash flow statement is often absent — set cash_flow_statement to null in that case.
 - Identify the company name, currency (default EUR), NACE code (if stated), and reporting standard (HGB or IFRS).
-- If NACE code is not stated, use "C" (manufacturing) as default.
+- If NACE code is not stated: use "F" for construction/engineering firms, "G" for wholesale/retail, "J" for IT/software, "C" for manufacturing — infer from company name and activities.
+- Extract data for ALL years present in the document, prioritising the most recent.
 
 Document:
 ---
-{document_text[:12000]}
+{document_text[:20000]}
 ---
 
 Return ONLY valid JSON. No markdown, no explanation."""
@@ -98,23 +99,24 @@ async def _extract_from_zip(filename: str, content: bytes,
     log.info("ZIP extraction: company=%r, files=%d, years=%s",
              ctx.company_name, ctx.total_files, ctx.years)
 
-    # Build readable document text from parsed (non-binary) data
+    # Build readable document text from parsed (non-binary) data.
+    # Sort most-recent years FIRST so they land within the extraction window.
     doc_parts: list[str] = []
 
-    # Annual reports are the primary P&L source
-    for year in sorted(ctx.annual_reports):
+    # Annual reports are the primary P&L source (most recent first)
+    for year in sorted(ctx.annual_reports, reverse=True):
         text = ctx.annual_reports[year].strip()
         if text:
             doc_parts.append(f"=== Annual Report {year} ===\n{text}")
 
-    # Accounting journals for cross-reference
-    for year in sorted(ctx.accounting_journals):
+    # Accounting journals for cross-reference (most recent first)
+    for year in sorted(ctx.accounting_journals, reverse=True):
         text = ctx.accounting_journals[year].strip()
         if text:
             doc_parts.append(f"=== Accounting Journal {year} (sample) ===\n{text}")
 
-    # Payroll data for headcount/salary cross-reference
-    for year in sorted(ctx.payroll_journals):
+    # Payroll data for headcount/salary cross-reference (most recent first)
+    for year in sorted(ctx.payroll_journals, reverse=True):
         text = ctx.payroll_journals[year].strip()
         if text:
             doc_parts.append(f"=== Payroll Journal {year} (sample) ===\n{text}")

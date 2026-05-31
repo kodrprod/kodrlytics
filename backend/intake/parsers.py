@@ -1,4 +1,4 @@
-"""Document parsers: PDF, Excel, CSV, SEC EDGAR JSON -> raw text / dict for LLM extraction."""
+"""Document parsers: PDF, Excel, CSV, DOCX, SEC EDGAR JSON -> raw text / dict for LLM extraction."""
 from __future__ import annotations
 import csv
 import io
@@ -8,6 +8,23 @@ from pathlib import Path
 from typing import Union
 
 log = logging.getLogger(__name__)
+
+
+def parse_docx(source: Union[bytes, Path]) -> str:
+    """Extract plain text from a .docx file."""
+    from docx import Document  # python-docx
+    if isinstance(source, Path):
+        doc = Document(source)
+    else:
+        doc = Document(io.BytesIO(source))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    # Also extract text from tables
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = "\t".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            if row_text:
+                paragraphs.append(row_text)
+    return "\n".join(paragraphs)
 
 
 def parse_csv(source: Union[str, bytes, Path]) -> str:

@@ -38,10 +38,15 @@ log = logging.getLogger(__name__)
 _API_BASE = "https://openrouter.ai/api/v1/chat/completions"
 _CACHE_PATH = Path(__file__).parent.parent.parent / "dev.db"
 
-_API_KEY   = os.getenv("OPENROUTER_API_KEY", "")
-_MODEL     = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
-_FALLBACK  = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
-_DATA_MODE = os.getenv("DATA_MODE", "test")
+_API_KEY       = os.getenv("OPENROUTER_API_KEY", "")
+_MODEL         = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
+_FALLBACK      = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
+# NARRATE_MODEL is used for final synthesis/narration (CEO, managers, room reports).
+# Set to a premium model (e.g. anthropic/claude-sonnet-4-5) to get high-quality,
+# instruction-following narration on top of pre-computed facts — without paying for
+# every mechanical worker call.
+_NARRATE_MODEL = os.getenv("NARRATE_MODEL", _MODEL)
+_DATA_MODE     = os.getenv("DATA_MODE", "test")
 
 if not _API_KEY:
     log.warning(
@@ -57,11 +62,12 @@ class LLMError(Exception):
 
 class RouterConfig:
     def __init__(self):
-        self.api_key   = _API_KEY
-        self.model     = _MODEL
-        self.fallback  = _FALLBACK
-        self.data_mode = _DATA_MODE
-        self.use_cache = (_DATA_MODE == "test")
+        self.api_key       = _API_KEY
+        self.model         = _MODEL
+        self.narrate_model = _NARRATE_MODEL
+        self.fallback      = _FALLBACK
+        self.data_mode     = _DATA_MODE
+        self.use_cache     = (_DATA_MODE == "test")
 
     def _check_real_mode(self, model: str) -> None:
         if self.data_mode == "real" and ":free" in model:
@@ -245,7 +251,11 @@ async def reason(prompt: str) -> str:
 
 
 async def narrate(prompt: str) -> str:
-    """Final narrative generation. Returns raw string."""
+    """Final narrative generation. Returns raw string.
+
+    Uses NARRATE_MODEL (default: same as MODEL_NAME, override to a premium
+    model for high-quality synthesis on top of pre-computed facts).
+    """
     messages = [
         {
             "role": "system",
@@ -258,6 +268,14 @@ async def narrate(prompt: str) -> str:
         },
         {"role": "user", "content": prompt},
     ]
-    # temperature=0: numeric outputs must be deterministic
-    content, _, _ = await _call_with_fallback(messages, temperature=0.0)
+    # Use the dedicated narration model (may differ from worker model)
+    narrate_model = _config.narrate_model
+    try:
+        content, _, _ = await _call(narrate_model, messages, temperature=0.0)
+    except LLMError as e:
+        if narrate_model != _config.model:
+            log.warning("Narrate model %s failed (%s), falling back to %s", narrate_model, e, _config.model)
+            content, _, _ = await _call_with_fallback(messages, temperature=0.0)
+        else:
+            raise
     return content

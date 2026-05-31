@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import logging
+import os
 from typing import Callable, Awaitable
 from backend.agents.models import Task, PipelineContext
 from backend.agents.worker import Worker
@@ -9,7 +10,12 @@ from backend.agents.manager import RoomManager
 
 log = logging.getLogger(__name__)
 
-_BATCH_SIZE = 6   # max concurrent LLM calls per batch (raised from 4)
+_BATCH_SIZE = 6   # max concurrent LLM calls per batch
+# LEAN_MODE=1 collapses each room to a single synthesis task (12 LLM calls/run vs 120+).
+# Pair with NARRATE_MODEL=anthropic/claude-... for best results.
+_LEAN_MODE = os.getenv("LEAN_MODE", "0").lower() in ("1", "true", "yes")
+# MAX_WORKERS_PER_ROOM caps worker count without full lean mode (0 = no cap)
+_MAX_WORKERS = int(os.getenv("MAX_WORKERS_PER_ROOM", "0"))
 
 
 class Room:
@@ -24,6 +30,30 @@ class Room:
         """Return the worker task list for this room."""
         return []
 
+    def make_lean_tasks(self, ctx: PipelineContext) -> list[Task]:
+        """Single synthesis task covering all room topics — used when LEAN_MODE=1.
+
+        The base implementation auto-generates a comprehensive task by collapsing
+        all normal tasks into one prompt. Rooms may override for a more targeted prompt.
+        """
+        all_tasks = self.make_tasks(ctx)
+        if not all_tasks:
+            return []
+        company = (ctx.dataset.company_name if ctx.dataset else None) or "the company"
+        topics = "\n".join(f"- {t.title}: {t.description}" for t in all_tasks)
+        queries = list(dict.fromkeys(q for t in all_tasks for q in t.search_queries[:1]))[:4]
+        return [Task(
+            f"{self.name.lower()}-synthesis",
+            f"{self.name} Full Analysis",
+            (
+                f"Write a comprehensive {self.name} analysis for {company} covering ALL of the "
+                f"following topics in a single well-structured report:\n\n{topics}\n\n"
+                "Use ONLY numbers from the VERIFIED FACTS TABLE. "
+                "For any metric not present in the facts table, write '[gap — data not available]'."
+            ),
+            queries,
+        )]
+
     def build_context_str(self, ctx: PipelineContext) -> str:
         """Context string given to every worker in this room."""
         return ""
@@ -37,7 +67,14 @@ class Room:
 
         # 2. Plan tasks
         try:
-            tasks = self.make_tasks(ctx)
+            if _LEAN_MODE:
+                tasks = self.make_lean_tasks(ctx)
+                if not tasks:
+                    tasks = self.make_tasks(ctx)
+            else:
+                tasks = self.make_tasks(ctx)
+            if _MAX_WORKERS > 0:
+                tasks = tasks[:_MAX_WORKERS]
         except Exception as e:
             log.error("Room %s make_tasks failed: %s", self.name, e)
             tasks = []
