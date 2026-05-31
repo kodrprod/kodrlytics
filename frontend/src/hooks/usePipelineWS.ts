@@ -80,17 +80,36 @@ export function usePipelineWS() {
 
         } else if (et === 'worker_learning') {
           const r = rooms[event.stage]
-          if (r) rooms[event.stage] = { ...r, workers: r.workers.map(w => w.worker_id === event.worker_id ? { ...w, status: 'learning' as const } : w) }
+          if (r) rooms[event.stage] = { ...r, workers: r.workers.map(w =>
+            w.worker_id === event.worker_id
+              ? { ...w, status: 'learning' as const, currentAction: event.queries?.[0] ?? 'searching...' }
+              : w
+          )}
 
-        } else if (et === 'worker_working' || et === 'worker_round') {
+        } else if (et === 'worker_working') {
           const r = rooms[event.stage]
-          if (r) rooms[event.stage] = { ...r, workers: r.workers.map(w => w.worker_id === event.worker_id ? { ...w, status: 'working' as const } : w) }
+          if (r) rooms[event.stage] = { ...r, workers: r.workers.map(w =>
+            w.worker_id === event.worker_id
+              ? { ...w, status: 'working' as const, currentAction: w.task_title, currentRound: 1 }
+              : w
+          )}
+
+        } else if (et === 'worker_round') {
+          const r = rooms[event.stage]
+          if (r) rooms[event.stage] = { ...r, workers: r.workers.map(w =>
+            w.worker_id === event.worker_id
+              ? { ...w, status: 'working' as const, currentRound: event.round, currentAction: `Round ${event.round}/4: ${w.task_title}` }
+              : w
+          )}
 
         } else if (et === 'worker_done') {
           const r = rooms[event.stage]
           if (r) rooms[event.stage] = {
             ...r,
-            workers: r.workers.map(w => w.worker_id === event.worker_id ? { ...w, status: 'done' as const } : w),
+            workers: r.workers.map(w => w.worker_id === event.worker_id
+              ? { ...w, status: 'done' as const, currentAction: '', currentRound: undefined }
+              : w
+            ),
             tasks_done: r.tasks_done + 1,
           }
 

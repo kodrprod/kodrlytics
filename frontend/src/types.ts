@@ -8,6 +8,8 @@ export interface WorkerInfo {
   task_title: string
   status: WorkerStatus
   spawnedAt: number
+  currentAction?: string   // live text shown in speech bubble
+  currentRound?: number    // 1-4, for working status
 }
 
 export interface RoomInfo {

@@ -47,11 +47,11 @@ export function HUD({ state, onStartRun }: HUDProps) {
     }}>
 
       {/* Header */}
-      <div style={{ background: '#0A0A0A', padding: '14px 16px', borderBottom: `2px solid ${ORANGE}` }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#FFF', letterSpacing: '0.12em' }}>
+      <div style={{ background: '#0A0A0A', padding: '16px 18px', borderBottom: `2px solid ${ORANGE}` }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: '#FFF', letterSpacing: '0.15em' }}>
           KODRLYTICS
         </div>
-        <div style={{ fontSize: 8, color: '#444', letterSpacing: '0.2em', marginTop: 2 }}>
+        <div style={{ fontSize: 9, color: '#444', letterSpacing: '0.22em', marginTop: 3 }}>
           FINANCIAL INTELLIGENCE SYSTEM
         </div>
       </div>
@@ -227,8 +227,8 @@ export function HUD({ state, onStartRun }: HUDProps) {
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontSize: 8, fontWeight: 700, color: '#444',
-  letterSpacing: '0.2em', marginBottom: 7,
+  fontSize: 9, fontWeight: 700, color: '#444',
+  letterSpacing: '0.2em', marginBottom: 8,
 }
 
 function btnStyle(active: boolean, variant: 'primary' | 'secondary'): React.CSSProperties {
