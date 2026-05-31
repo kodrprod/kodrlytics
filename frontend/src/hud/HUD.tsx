@@ -3,6 +3,8 @@ import { EventLog } from './EventLog'
 import { ResultsPanel } from './ResultsPanel'
 import type { PipelineState } from '../hooks/usePipelineWS'
 
+const BACKEND = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL ?? 'http://localhost:8000'
+
 interface HUDProps {
   state: PipelineState
   onStartRun: (file?: File) => void
@@ -168,6 +170,31 @@ export function HUD({ state, onStartRun }: HUDProps) {
 
         <div style={{ borderTop: '1px solid #1A1A1A' }} />
 
+        {/* Download buttons — shown when complete and reports are ready */}
+        {state.status === 'complete' && state.runId && (
+          <div>
+            <div style={sectionLabel}>DOWNLOAD REPORT</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <a
+                href={`${BACKEND}/reports/${state.runId}.pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={dlBtnStyle}
+              >
+                PDF
+              </a>
+              <a
+                href={`${BACKEND}/reports/${state.runId}.docx`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={dlBtnStyle}
+              >
+                DOCX
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Event log / results */}
         <div style={{ flex: 1, minHeight: 0 }}>
           <div style={sectionLabel}>
@@ -217,4 +244,20 @@ function btnStyle(active: boolean, variant: 'primary' | 'secondary'): React.CSSP
     transition: 'all 0.15s',
     borderRadius: 2,
   }
+}
+
+const dlBtnStyle: React.CSSProperties = {
+  flex: 1, padding: '9px 10px',
+  background: '#0D2A14',
+  border: '1.5px solid #228833',
+  color: '#33CC55',
+  fontFamily: '"Courier New", monospace',
+  fontSize: 10, fontWeight: 700,
+  cursor: 'pointer',
+  letterSpacing: '0.12em',
+  textDecoration: 'none',
+  textAlign: 'center',
+  display: 'block',
+  borderRadius: 2,
+  transition: 'all 0.15s',
 }

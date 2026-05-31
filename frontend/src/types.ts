@@ -114,6 +114,8 @@ export interface RunCompleteEvent extends BaseEvent {
     scenarios: Array<{ label: string; target_value: number; impact_eur: number | null; impact_description: string }>
   }>
   narrative: string
+  pdf_url?: string | null
+  docx_url?: string | null
 }
 
 export interface RunErrorEvent extends BaseEvent {

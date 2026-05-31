@@ -83,6 +83,26 @@ async def run_room_pipeline(
     except Exception as e:
         log.warning("Pipeline: CEO synthesis failed: %s", e)
 
+    # ── Generate downloadable reports ─────────────────────────────────────────
+    _pdf_url: str | None = None
+    _docx_url: str | None = None
+    try:
+        from backend.reporting.pdf_generator import generate_rooms_pdf
+        from backend.reporting.docx_generator import generate_rooms_docx
+        _cn = ""
+        if ctx.financials:
+            _cn = getattr(ctx.financials, "company_name", "")
+        if not _cn and ctx.dataset:
+            _cn = ctx.dataset.company_name
+        _cn = _cn or "Company"
+        generate_rooms_pdf(ctx.room_reports, _cn, filename, run_id)
+        generate_rooms_docx(ctx.room_reports, _cn, filename, run_id)
+        _pdf_url = f"/reports/{run_id}.pdf"
+        _docx_url = f"/reports/{run_id}.docx"
+        log.info("Pipeline: reports generated for %s", run_id)
+    except Exception as e:
+        log.warning("Pipeline: report generation failed: %s", e)
+
     # ── run_complete ───────────────────────────────────────────────────────────
     try:
         ratios, flags, projections = [], [], []
@@ -133,6 +153,8 @@ async def run_room_pipeline(
             "flags": flags,
             "projections": projections,
             "narrative": narrative,
+            "pdf_url": _pdf_url,
+            "docx_url": _docx_url,
         })
     except Exception as e:
         log.error("run_complete emission failed: %s", e)

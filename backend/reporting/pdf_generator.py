@@ -378,3 +378,202 @@ For DATA_MODE=test runs: free LLM providers are used and may process data for mo
     pdf.output(str(out_path))
     log.info("PDF report saved: %s (%.1f KB)", out_path, out_path.stat().st_size / 1024)
     return out_path
+
+
+# ── Rooms-pipeline PDF ─────────────────────────────────────────────────────────
+
+_ROOM_ORDER = ["CEO", "Intake", "Extraction", "Analysis", "Benchmarking", "Strategy", "Reporting"]
+_ROOM_DISPLAY = {
+    "CEO":          "Executive Summary",
+    "Intake":       "I.   Document Intelligence & Intake",
+    "Extraction":   "II.  Data Extraction & Validation",
+    "Analysis":     "III. Financial Analysis",
+    "Benchmarking": "IV.  Industry Benchmarking",
+    "Strategy":     "V.   Strategic Assessment",
+    "Reporting":    "VI.  Reporting & Recommendations",
+}
+
+
+def _render_room_report(pdf: KodrlyticsPDF, text: str) -> None:
+    """Render a room manager report with ** heading detection."""
+    if not text or text.startswith("["):
+        pdf.body_text(text or "(No report generated for this room.)")
+        return
+
+    buf: list[str] = []
+
+    def _flush() -> None:
+        block = "\n".join(buf).strip()
+        if block:
+            pdf.body_text(block)
+        buf.clear()
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        # Detect **HEADING** pattern
+        if (stripped.startswith("**") and stripped.endswith("**")
+                and 4 < len(stripped) < 80 and stripped.count("**") == 2):
+            _flush()
+            heading = stripped.strip("*").strip()
+            pdf.chapter_title(heading, level=3)
+        else:
+            buf.append(line)
+
+    _flush()
+
+
+def generate_rooms_pdf(
+    room_reports: dict[str, str],
+    company_name: str,
+    source_file: str,
+    run_id: str,
+) -> Path:
+    """Generate a professional multi-chapter PDF from room pipeline output."""
+    from datetime import datetime as _dt
+    generated_at = _dt.now().strftime("%d %B %Y, %H:%M UTC")
+
+    pdf = KodrlyticsPDF()
+    pdf.set_title(f"Financial Intelligence Report: {company_name}")
+    pdf.set_author("Kodrlytics Financial Intelligence System")
+
+    # ── Cover page ─────────────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.ln(25)
+    pdf.set_font("Helvetica", "B", 32)
+    pdf.set_text_color(20, 40, 70)
+    pdf.cell(0, 16, "KODRLYTICS", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 13)
+    pdf.set_text_color(80, 100, 130)
+    pdf.cell(0, 7, "Financial Intelligence System", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(12)
+
+    pdf.set_draw_color(20, 40, 70)
+    pdf.set_line_width(1.0)
+    pdf.line(30, pdf.get_y(), 180, pdf.get_y())
+    pdf.ln(12)
+
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(20, 40, 70)
+    for chunk in [company_name[i:i+45] for i in range(0, len(company_name), 45)]:
+        pdf.cell(0, 11, _safe(chunk), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "", 14)
+    pdf.set_text_color(100, 120, 150)
+    pdf.cell(0, 8, "Financial Intelligence Report", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+
+    pdf.set_line_width(0.3)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(50, pdf.get_y(), 160, pdf.get_y())
+    pdf.ln(10)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 7, f"Generated: {generated_at}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"Source: {_safe(source_file)}", align="C", new_x="LMARGIN", new_y="NEXT")
+    rooms_analysed = sum(1 for k in _ROOM_ORDER if k in room_reports)
+    pdf.cell(0, 7, f"Analysis rooms completed: {rooms_analysed} of {len(_ROOM_ORDER)}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(20)
+
+    pdf.set_font("Helvetica", "I", 8.5)
+    pdf.set_text_color(160, 160, 160)
+    pdf.multi_cell(
+        0, 5,
+        "CONFIDENTIAL -- For internal use only. All projections are illustrative and do not "
+        "constitute financial advice. AI-generated analysis has been produced by a multi-agent "
+        "system using free language models via OpenRouter. Verify all figures independently.",
+        align="C",
+    )
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_line_width(0.2)
+
+    # ── Table of Contents ──────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.chapter_title("Table of Contents", level=1)
+    toc_entries = [
+        ("Executive Summary", "CEO" in room_reports),
+        ("I.   Document Intelligence & Intake", "Intake" in room_reports),
+        ("II.  Data Extraction & Validation", "Extraction" in room_reports),
+        ("III. Financial Analysis", "Analysis" in room_reports),
+        ("IV.  Industry Benchmarking", "Benchmarking" in room_reports),
+        ("V.   Strategic Assessment", "Strategy" in room_reports),
+        ("VI.  Reporting & Recommendations", "Reporting" in room_reports),
+        ("Appendix A -- Methodology", True),
+        ("Appendix B -- Disclaimer", True),
+    ]
+    pdf.set_font("Helvetica", "", 11)
+    for title, available in toc_entries:
+        color = (20, 40, 70) if available else (180, 180, 180)
+        pdf.set_text_color(*color)
+        pdf.cell(0, 8, f"  {_safe(title)}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+
+    # ── Analysis chapters ──────────────────────────────────────────────────────
+    for room_key in _ROOM_ORDER:
+        if room_key not in room_reports:
+            continue
+        pdf.add_page()
+        display = _ROOM_DISPLAY.get(room_key, room_key)
+        pdf.chapter_title(display, level=1)
+        _render_room_report(pdf, room_reports[room_key])
+
+    # ── Appendix A: Methodology ────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.chapter_title("Appendix A -- Methodology", level=1)
+    pdf.body_text(
+        "This report was produced by the Kodrlytics multi-agent financial intelligence system. "
+        "The pipeline consists of six specialised analysis rooms, each staffed by 20 virtual "
+        "senior analysts (language model workers) and one room manager who synthesises their findings.\n\n"
+        "ROOM ARCHITECTURE\n"
+        "  Room 1 (Intake): Document classification, data quality assessment, completeness audit.\n"
+        "  Room 2 (Extraction): Financial data normalisation, schema validation, period alignment.\n"
+        "  Room 3 (Analysis): Ratio computation, trend analysis, anomaly detection.\n"
+        "  Room 4 (Benchmarking): Peer comparison against Bundesbank/ECB BACH industry data.\n"
+        "  Room 5 (Strategy): Strategic assessment, improvement opportunities, risk mapping.\n"
+        "  Room 6 (Reporting): Synthesis, executive summary, actionable recommendations.\n\n"
+        "ANALYTICAL PROCESS\n"
+        "Each worker conducts four analytical rounds:\n"
+        "  Round 1 -- Structured scan: identify key data points and initial observations.\n"
+        "  Round 2 -- Deep numerical analysis: compute changes, trends, anomalies.\n"
+        "  Round 3 -- Critical challenge: test assumptions, seek alternative explanations.\n"
+        "  Round 4 -- Final synthesis: produce board-level findings and recommendations.\n\n"
+        "EXTERNAL RESEARCH\n"
+        "Workers supplement financial data with real-time DuckDuckGo search results "
+        "to provide market context and industry benchmarks.\n\n"
+        "LANGUAGE MODELS\n"
+        "All narrative generation uses free language models via OpenRouter. "
+        "For production use with sensitive data, configure DATA_MODE=real with "
+        "a no-logging paid model."
+    )
+
+    # ── Appendix B: Disclaimer ─────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.chapter_title("Appendix B -- Disclaimer", level=1)
+    pdf.body_text(
+        "This report is generated by an AI-powered financial analysis system and is intended "
+        "for informational and internal decision-support purposes only. It does not constitute "
+        "financial advice, investment advice, or any form of regulated professional advisory "
+        "service.\n\n"
+        "AI-GENERATED CONTENT\n"
+        "The analysis narratives, findings, and recommendations in this report are generated "
+        "by large language models (LLMs). While the system is designed to work only from "
+        "provided data, LLMs may occasionally produce inaccurate or fabricated statements. "
+        "All figures should be verified against the original source documents.\n\n"
+        "PROJECTIONS\n"
+        "Any forward-looking statements or projections are illustrative scenarios based on "
+        "historical data patterns and stated assumptions. They are not predictions of future "
+        "performance and should not be relied upon as such.\n\n"
+        "DATA PRIVACY\n"
+        "Financial data submitted for analysis is processed by third-party LLM providers. "
+        "For sensitive data, ensure DATA_MODE=real is configured with an appropriate "
+        "no-logging model policy.\n\n"
+        "LIABILITY\n"
+        "Kodrlytics and its operators accept no liability for decisions made on the basis "
+        "of this report. Users are responsible for verifying all information and obtaining "
+        "qualified professional advice before making financial or strategic decisions."
+    )
+
+    out_path = REPORTS_DIR / f"{run_id}.pdf"
+    pdf.output(str(out_path))
+    log.info("Rooms PDF saved: %s (%.1f KB)", out_path, out_path.stat().st_size / 1024)
+    return out_path

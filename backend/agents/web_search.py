@@ -1,35 +1,28 @@
-"""DuckDuckGo instant answers — no API key required."""
+"""DuckDuckGo search via duckduckgo-search library (DDGS). No API key required."""
 from __future__ import annotations
+import asyncio
 import logging
-from urllib.parse import quote
-
-import httpx
 
 log = logging.getLogger(__name__)
 
-_DDG_URL = "https://api.duckduckgo.com/?q={query}&format=json&no_html=1&skip_disambig=1"
-
 
 async def ddg_search(query: str, max_results: int = 3) -> list[dict]:
-    """Search DuckDuckGo instant answers. Returns list of result dicts."""
+    """Search DuckDuckGo via DDGS. Returns list of result dicts with 'Text' key."""
     try:
-        url = _DDG_URL.format(query=quote(query))
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(url, follow_redirects=True)
-            resp.raise_for_status()
-            data = resp.json()
+        from ddgs import DDGS
 
-        results = []
+        def _sync_search() -> list[dict]:
+            raw = list(DDGS().text(query, max_results=max_results))
+            return [
+                {
+                    "Text": f"{r.get('title', '')}: {r.get('body', '')}".strip(": "),
+                    "href": r.get("href", ""),
+                }
+                for r in raw
+                if r.get("body") or r.get("title")
+            ]
 
-        abstract = data.get("Abstract", "")
-        if abstract:
-            results.append({"Text": abstract, "source": "abstract"})
-
-        for topic in data.get("RelatedTopics", [])[:max_results]:
-            if isinstance(topic, dict) and "Text" in topic:
-                results.append({"Text": topic["Text"], "source": "related"})
-
-        return results[:max_results]
+        return await asyncio.to_thread(_sync_search)
     except Exception as e:
         log.warning("ddg_search failed for query %r: %s", query, e)
         return []

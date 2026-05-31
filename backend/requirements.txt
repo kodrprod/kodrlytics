@@ -15,3 +15,5 @@ aiofiles==23.2.1
 python-multipart==0.0.9
 fpdf2==2.7.9
 Jinja2==3.1.4
+ddgs>=0.1.0
+python-docx>=1.1.0

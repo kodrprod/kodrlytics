@@ -13,7 +13,10 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Kodrlytics Financial Analysis API", version="0.4.0")
+app = FastAPI(title="Kodrlytics Financial Analysis API", version="0.5.0")
+
+REPORTS_DIR = Path(__file__).parent.parent.parent / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -113,8 +116,34 @@ async def legacy_pipeline_ws(websocket: WebSocket, run_id: str):
     await rooms_pipeline_ws(websocket, run_id)
 
 
+# ── Report downloads ──────────────────────────────────────────────────────────
+
+@app.get("/reports/{run_id}.pdf")
+async def download_pdf(run_id: str):
+    path = REPORTS_DIR / f"{run_id}.pdf"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF report not found — run may still be in progress")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"kodrlytics_{run_id[:8]}.pdf",
+    )
+
+
+@app.get("/reports/{run_id}.docx")
+async def download_docx(run_id: str):
+    path = REPORTS_DIR / f"{run_id}.docx"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="DOCX report not found — run may still be in progress")
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"kodrlytics_{run_id[:8]}.docx",
+    )
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.4.0"}
+    return {"status": "ok", "version": "0.5.0"}
