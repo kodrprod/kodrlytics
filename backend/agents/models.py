@@ -21,6 +21,7 @@ class PipelineContext:
     content: bytes
     document_text: str = ""
     company_hint: str = ""
+    # Structured financial data
     financials: Optional[Any] = None        # CompanyFinancials
     reconciliation: Optional[Any] = None    # ReconciliationResult
     analysis: Optional[Any] = None          # AnalysisResult
@@ -28,4 +29,10 @@ class PipelineContext:
     actions: list = field(default_factory=list)
     projections: list = field(default_factory=list)
     proj_summary: str = ""
+    # Multi-document dataset (ZIP ingestion)
+    dataset: Optional[Any] = None           # DatasetContext from zip_ingester
+    # CEO plan and room briefs
+    ceo_plan: str = ""
+    room_briefs: dict[str, str] = field(default_factory=dict)
+    # Accumulated room reports
     room_reports: dict[str, str] = field(default_factory=dict)

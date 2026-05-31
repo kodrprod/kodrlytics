@@ -56,6 +56,11 @@ class Room:
 
         context_str = self.build_context_str(ctx)
 
+        # Prepend CEO brief if available
+        ceo_brief = ctx.room_briefs.get(self.name, "")
+        if ceo_brief:
+            context_str = f"CEO BRIEF FOR {self.name.upper()} DEPARTMENT:\n{ceo_brief}\n\n{context_str}"
+
         # 4. Spawn workers
         workers: list[Worker] = []
         for i, task in enumerate(tasks):
@@ -83,6 +88,16 @@ class Room:
                     "room_name": self.name, "stage": self.stage,
                     "worker_id": w.worker_id, "task_title": t.title,
                 })
+
+                # Emit round progress events during multi-round work
+                for round_num in range(1, 4):
+                    await asyncio.sleep(0)  # yield to event loop
+                    await emit({
+                        "event_type": "worker_round", "run_id": run_id,
+                        "room_name": self.name, "stage": self.stage,
+                        "worker_id": w.worker_id, "round": round_num,
+                    })
+
                 t.result = await w.work(t, context_str, learned)
                 t.status = "done"
             except Exception as e:

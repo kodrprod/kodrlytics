@@ -1,9 +1,7 @@
-"""6-room multi-agent pipeline orchestrator."""
+"""6-room multi-agent pipeline orchestrator with CEO layer and ZIP ingestion."""
 from __future__ import annotations
 import dataclasses
-import json
 import logging
-from datetime import datetime, timezone
 from typing import Callable, Awaitable
 
 from backend.agents.models import PipelineContext
@@ -14,6 +12,8 @@ from backend.agents.rooms import (
 
 log = logging.getLogger(__name__)
 
+ROOM_NAMES = ['Intake', 'Extraction', 'Analysis', 'Benchmarking', 'Strategy', 'Reporting']
+
 
 async def run_room_pipeline(
     filename: str,
@@ -21,8 +21,39 @@ async def run_room_pipeline(
     run_id: str,
     emit: Callable[..., Awaitable[None]],
 ) -> None:
-    """Run all 6 rooms in sequence, emitting events to the WebSocket."""
+    """Full pipeline: ZIP ingestion → CEO planning → 6 rooms → CEO synthesis."""
     ctx = PipelineContext(filename=filename, content=content)
+
+    # ── ZIP ingestion ──────────────────────────────────────────────────────────
+    if filename.lower().endswith('.zip'):
+        try:
+            from backend.intake.zip_ingester import ingest_zip
+            log.info("Pipeline: ingesting ZIP %s", filename)
+            await emit({"event_type": "ceo_thinking", "run_id": run_id,
+                        "message": f"Ingesting {filename}..."})
+            ctx.dataset = ingest_zip(filename, content)
+            log.info("Pipeline: ZIP ingested — %d files, %s",
+                     ctx.dataset.total_files, ctx.dataset.company_name)
+        except Exception as e:
+            log.error("Pipeline: ZIP ingestion failed: %s", e)
+
+    # ── CEO planning ───────────────────────────────────────────────────────────
+    try:
+        from backend.agents.ceo import CEO
+        ceo = CEO()
+        await emit({"event_type": "ceo_thinking", "run_id": run_id,
+                    "message": "CEO reviewing dataset and planning analysis..."})
+        dataset = ctx.dataset
+        if dataset:
+            ctx.room_briefs = await ceo.plan_and_brief(dataset, ROOM_NAMES)
+            ctx.ceo_plan = ctx.room_briefs.get("__plan__", "")
+            log.info("Pipeline: CEO plan generated, briefs for %d rooms", len(ctx.room_briefs))
+        await emit({"event_type": "ceo_briefed", "run_id": run_id,
+                    "message": "CEO has briefed all department managers."})
+    except Exception as e:
+        log.warning("Pipeline: CEO planning failed: %s", e)
+
+    # ── 6 rooms ────────────────────────────────────────────────────────────────
     rooms = [
         IntakeRoom(), ExtractionRoom(), AnalysisRoom(),
         BenchmarkingRoom(), StrategyRoom(), ReportingRoom(),
@@ -38,7 +69,21 @@ async def run_room_pipeline(
                 "stage": room.name, "error": str(e),
             })
 
-    # Emit run_complete so the HUD can display results
+    # ── CEO final synthesis ────────────────────────────────────────────────────
+    try:
+        from backend.agents.ceo import CEO
+        ceo = CEO()
+        await emit({"event_type": "ceo_thinking", "run_id": run_id,
+                    "message": "CEO writing final executive synthesis..."})
+        if ctx.dataset:
+            ceo_summary = await ceo.final_synthesis(ctx.room_reports, ctx.dataset)
+            ctx.room_reports["CEO"] = ceo_summary
+        await emit({"event_type": "ceo_done", "run_id": run_id,
+                    "message": "CEO synthesis complete."})
+    except Exception as e:
+        log.warning("Pipeline: CEO synthesis failed: %s", e)
+
+    # ── run_complete ───────────────────────────────────────────────────────────
     try:
         ratios, flags, projections = [], [], []
 
@@ -69,8 +114,14 @@ async def run_room_pipeline(
                     ],
                 })
 
-        narrative = ctx.room_reports.get("Reporting", "")
-        company_name = getattr(ctx.financials, "company_name", "Unknown") if ctx.financials else "Unknown"
+        narrative = ctx.room_reports.get("CEO") or ctx.room_reports.get("Reporting", "")
+        company_name = ""
+        if ctx.financials:
+            company_name = getattr(ctx.financials, "company_name", "")
+        if not company_name and ctx.dataset:
+            company_name = ctx.dataset.company_name
+        if not company_name:
+            company_name = "Unknown"
 
         await emit({
             "event_type": "run_complete", "run_id": run_id,
@@ -85,4 +136,5 @@ async def run_room_pipeline(
         })
     except Exception as e:
         log.error("run_complete emission failed: %s", e)
-        await emit({"event_type": "run_error", "run_id": run_id, "stage": "reporting", "error": str(e)})
+        await emit({"event_type": "run_error", "run_id": run_id,
+                    "stage": "reporting", "error": str(e)})

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FloorView } from './scene/FloorView'
+import { OfficeView } from './scene/OfficeView'
 import { HUD } from './hud/HUD'
 import { usePipelineWS } from './hooks/usePipelineWS'
 
@@ -11,12 +11,12 @@ export default function App() {
     <div style={{
       width: '100vw', height: '100vh',
       display: 'flex', flexDirection: 'row',
-      background: '#FFFFFF',
+      background: '#080808',
       fontFamily: '"Courier New", Courier, monospace',
       overflow: 'hidden',
     }}>
       <HUD state={state} onStartRun={startRun} />
-      <FloorView state={state} activeFloor={activeFloor} onFloorChange={setActiveFloor} />
+      <OfficeView state={state} activeFloor={activeFloor} onFloorChange={setActiveFloor} />
     </div>
   )
 }
