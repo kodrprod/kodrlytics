@@ -21,7 +21,17 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
+# Try explicit project root first, then walk up from cwd as fallback
+_dotenv_explicit = Path(__file__).resolve().parent.parent.parent / ".env"
+if _dotenv_explicit.exists():
+    load_dotenv(_dotenv_explicit, override=True)
+else:
+    # Fallback: walk up from parent directories
+    for _p in [Path.cwd(), Path.cwd().parent, Path.cwd().parent.parent]:
+        _candidate = _p / ".env"
+        if _candidate.exists():
+            load_dotenv(_candidate, override=True)
+            break
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +42,13 @@ _API_KEY   = os.getenv("OPENROUTER_API_KEY", "")
 _MODEL     = os.getenv("MODEL_NAME", "meta-llama/llama-3.1-8b-instruct:free")
 _FALLBACK  = os.getenv("FALLBACK_MODEL", "mistralai/mistral-7b-instruct:free")
 _DATA_MODE = os.getenv("DATA_MODE", "test")
+
+if not _API_KEY:
+    log.warning(
+        "OPENROUTER_API_KEY is not set! "
+        "Looked for .env at: %s  (exists=%s) | cwd=%s",
+        _dotenv_explicit, _dotenv_explicit.exists(), Path.cwd()
+    )
 
 
 class LLMError(Exception):
@@ -94,6 +111,11 @@ def _cache_set(key: str, response: str) -> None:
 async def _call(model: str, messages: list[dict], response_format: dict | None = None,
                 temperature: float = 0.2) -> tuple[str, float, float]:
     """Returns (content, cost_usd, latency_s). Raises LLMError on failure."""
+    if not _config.api_key:
+        raise LLMError(
+            "OPENROUTER_API_KEY is empty. "
+            "Ensure .env is in the project root and uvicorn has been restarted."
+        )
     _config._check_real_mode(model)
 
     key = _cache_key(model, messages)
