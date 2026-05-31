@@ -34,7 +34,7 @@ const STATUS_LABELS = {
   error:    'ERROR',
 }
 
-const API = (import.meta as Record<string, Record<string, string>>).env?.VITE_API_URL ?? 'http://localhost:8000'
+const API = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL ?? 'http://localhost:8000'
 
 export function HUD({ state, onStartRun }: HUDProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
