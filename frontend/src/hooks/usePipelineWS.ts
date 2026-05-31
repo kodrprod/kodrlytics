@@ -27,8 +27,11 @@ export function usePipelineWS() {
     rooms: makeRooms(), events: [], result: null, errorMsg: null,
   })
   const wsRef = useRef<WebSocket | null>(null)
+  const pendingRef = useRef(false)
 
   const startRun = useCallback(async (file?: File) => {
+    if (pendingRef.current) return
+    pendingRef.current = true
     wsRef.current?.close()
     setState(s => ({
       ...s, status: 'running',
@@ -49,6 +52,7 @@ export function usePipelineWS() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setState(s => ({ ...s, status: 'error', errorMsg: msg }))
+      pendingRef.current = false
       return
     }
 
@@ -136,8 +140,14 @@ export function usePipelineWS() {
       })
     }
 
-    ws.onerror = () => setState(s => ({ ...s, status: 'error', errorMsg: 'WebSocket connection failed' }))
-    ws.onclose = () => setState(s => s.status === 'running' ? { ...s, status: 'complete' } : s)
+    ws.onerror = () => {
+      pendingRef.current = false
+      setState(s => ({ ...s, status: 'error', errorMsg: 'WebSocket connection failed' }))
+    }
+    ws.onclose = () => {
+      pendingRef.current = false
+      setState(s => s.status === 'running' ? { ...s, status: 'complete' } : s)
+    }
   }, [])
 
   return { state, startRun }
