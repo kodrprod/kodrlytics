@@ -5,14 +5,17 @@ import type { PipelineState } from '../hooks/usePipelineWS'
 
 const BACKEND = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL ?? 'http://localhost:8000'
 
+const ORANGE = '#FF5500'
+const GREEN  = '#1A9940'
+const BORDER = '#E0E0E0'
+const BG     = '#F7F8FA'
+const TEXT   = '#1A1A1A'
+const MUTED  = '#888888'
+
 interface HUDProps {
   state: PipelineState
   onStartRun: (file?: File) => void
 }
-
-const ORANGE = '#FF6600'
-const DARK   = '#111111'
-const GREY   = '#666666'
 
 export function HUD({ state, onStartRun }: HUDProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -24,140 +27,130 @@ export function HUD({ state, onStartRun }: HUDProps) {
     e.target.value = ''
   }
 
-  const statusDot   = { idle: '#444', running: ORANGE, complete: '#228833', error: '#CC2222' }[state.status]
-  const statusLabel = { idle: 'READY', running: 'RUNNING', complete: 'COMPLETE', error: 'ERROR' }[state.status]
+  const statusColor = { idle: MUTED, running: ORANGE, complete: GREEN, error: '#CC2222' }[state.status]
+  const statusLabel = { idle: 'Ready', running: 'Running', complete: 'Complete', error: 'Error' }[state.status]
 
-  // Count active workers across all rooms
   const activeWorkers = state.rooms.reduce(
     (a, r) => a + r.workers.filter(w => w.status === 'working' || w.status === 'learning').length, 0
   )
   const totalWorkers = state.rooms.reduce((a, r) => a + r.workers.length, 0)
-  const tasksDone = state.rooms.reduce((a, r) => a + r.tasks_done, 0)
-  const tasksTotal = state.rooms.reduce((a, r) => a + r.task_count, 0)
+  const tasksDone    = state.rooms.reduce((a, r) => a + r.tasks_done, 0)
+  const tasksTotal   = state.rooms.reduce((a, r) => a + r.task_count, 0)
 
   return (
     <div style={{
       width: 300, flexShrink: 0,
       height: '100vh',
-      background: '#111',
-      borderRight: `2px solid #222`,
+      background: '#FFFFFF',
+      borderRight: `2px solid ${BORDER}`,
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
-      fontFamily: '"Courier New", Courier, monospace',
+      fontFamily: 'Arial, sans-serif',
     }}>
 
       {/* Header */}
-      <div style={{ background: '#0A0A0A', padding: '16px 18px', borderBottom: `2px solid ${ORANGE}` }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#FFF', letterSpacing: '0.15em' }}>
-          KODRLYTICS
+      <div style={{
+        background: '#1A2540',
+        padding: '18px 20px',
+        borderBottom: `3px solid ${ORANGE}`,
+      }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+          Kodrlytics
         </div>
-        <div style={{ fontSize: 9, color: '#444', letterSpacing: '0.22em', marginTop: 3 }}>
-          FINANCIAL INTELLIGENCE SYSTEM
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.15em', marginTop: 3, textTransform: 'uppercase' }}>
+          Financial Intelligence System
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Status */}
+        {/* Status chip */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 10px',
-          background: '#0A0A0A',
-          border: `1px solid #222`,
-          borderRadius: 3,
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px',
+          background: BG,
+          border: `1.5px solid ${BORDER}`,
+          borderRadius: 8,
         }}>
           <div style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: statusDot, flexShrink: 0,
-            boxShadow: state.status === 'running' ? `0 0 8px ${ORANGE}` : 'none',
-            animation: state.status === 'running' ? 'pulse 1s ease-in-out infinite' : 'none',
+            width: 9, height: 9, borderRadius: '50%',
+            background: statusColor, flexShrink: 0,
+            boxShadow: state.status === 'running' ? `0 0 0 3px ${ORANGE}33` : 'none',
+            animation: state.status === 'running' ? 'pulse 1.2s ease-in-out infinite' : 'none',
           }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: statusDot, letterSpacing: '0.12em' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>
             {statusLabel}
           </span>
           {state.errorMsg && (
-            <span style={{ fontSize: 8, color: '#CC2222', marginLeft: 4 }}>
+            <span style={{ fontSize: 11, color: '#CC2222', marginLeft: 4 }}>
               {state.errorMsg.slice(0, 28)}
             </span>
           )}
         </div>
 
-        {/* Live counters */}
+        {/* Live counters grid */}
         {state.status === 'running' && (
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr',
-            gap: 6, fontSize: 10,
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
-              { label: 'ACTIVE', value: activeWorkers, color: ORANGE },
-              { label: 'TOTAL', value: totalWorkers, color: '#888' },
-              { label: 'DONE', value: tasksDone, color: '#228833' },
-              { label: 'TASKS', value: tasksTotal, color: '#555' },
+              { label: 'Active', value: activeWorkers, color: ORANGE },
+              { label: 'Total', value: totalWorkers, color: MUTED },
+              { label: 'Done', value: tasksDone, color: GREEN },
+              { label: 'Tasks', value: tasksTotal, color: '#AAAAAA' },
             ].map(({ label, value, color }) => (
               <div key={label} style={{
-                background: '#0D0D0D', border: '1px solid #222',
-                borderRadius: 3, padding: '6px 8px',
-                display: 'flex', flexDirection: 'column', gap: 1,
+                background: BG, border: `1px solid ${BORDER}`,
+                borderRadius: 8, padding: '10px 12px',
               }}>
-                <span style={{ fontSize: 7, color: '#444', letterSpacing: '0.15em' }}>{label}</span>
-                <span style={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1 }}>{value}</span>
+                <div style={{ fontSize: 10, color: MUTED, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Room progress bars */}
+        {/* Department progress */}
         {state.status === 'running' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <div style={{ fontSize: 8, color: '#444', letterSpacing: '0.15em', marginBottom: 2 }}>
-              DEPARTMENT STATUS
-            </div>
-            {state.rooms.map((r) => {
-              const prog = r.task_count > 0 ? r.tasks_done / r.task_count : 0
-              const col = { idle: '#333', active: ORANGE, complete: '#228833', error: '#CC2222' }[r.status]
-              return (
-                <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{
-                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                    background: col,
-                    boxShadow: r.status === 'active' ? `0 0 4px ${ORANGE}` : 'none',
-                  }} />
-                  <span style={{ fontSize: 8, color: '#666', minWidth: 72 }}>
-                    {r.name.slice(0, 10).toUpperCase()}
-                  </span>
-                  <div style={{ flex: 1, height: 3, background: '#1A1A1A', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${Math.round(prog * 100)}%`,
-                      background: col, transition: 'width 0.5s',
-                    }} />
+          <div>
+            <div style={sectionLabel}>Departments</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {state.rooms.map((r) => {
+                const prog = r.task_count > 0 ? r.tasks_done / r.task_count : 0
+                const col  = { idle: '#DDDDDD', active: ORANGE, complete: GREEN, error: '#CC2222' }[r.status]
+                return (
+                  <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: col }} />
+                    <span style={{ fontSize: 12, color: TEXT, minWidth: 82 }}>{r.name}</span>
+                    <div style={{ flex: 1, height: 4, background: '#EEEEEE', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${Math.round(prog * 100)}%`,
+                        background: col, transition: 'width 0.5s',
+                      }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: MUTED, minWidth: 26, textAlign: 'right' }}>
+                      {Math.round(prog * 100)}%
+                    </span>
                   </div>
-                  <span style={{ fontSize: 8, color: '#444', minWidth: 22, textAlign: 'right' }}>
-                    {Math.round(prog * 100)}%
-                  </span>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         )}
 
-        {/* Divider */}
-        <div style={{ borderTop: '1px solid #1A1A1A' }} />
+        <div style={{ borderTop: `1px solid ${BORDER}` }} />
 
         {/* Launch controls */}
         <div>
-          <div style={sectionLabel}>LAUNCH ANALYSIS</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <button onClick={() => onStartRun()} disabled={!canRun}
-              style={btnStyle(canRun, 'primary')}>
-              RUN SAMPLE
+          <div style={sectionLabel}>Launch Analysis</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <button onClick={() => onStartRun()} disabled={!canRun} style={btnStyle(canRun, 'primary')}>
+              Run Sample
             </button>
-            <button onClick={() => fileInputRef.current?.click()} disabled={!canRun}
-              style={btnStyle(canRun, 'secondary')}>
-              UPLOAD
+            <button onClick={() => fileInputRef.current?.click()} disabled={!canRun} style={btnStyle(canRun, 'secondary')}>
+              Upload File
             </button>
           </div>
-          <div style={{ fontSize: 8, color: '#333', letterSpacing: '0.05em' }}>
-            Accepts: PDF, Excel, CSV, JSON, ZIP (company datasets)
+          <div style={{ fontSize: 11, color: '#AAAAAA' }}>
+            Accepts PDF, Excel, CSV, JSON, ZIP
           </div>
           <input
             ref={fileInputRef}
@@ -168,39 +161,35 @@ export function HUD({ state, onStartRun }: HUDProps) {
           />
         </div>
 
-        <div style={{ borderTop: '1px solid #1A1A1A' }} />
+        <div style={{ borderTop: `1px solid ${BORDER}` }} />
 
-        {/* Download buttons — shown when complete and reports are ready */}
+        {/* Download buttons */}
         {state.status === 'complete' && state.runId && (
           <div>
-            <div style={sectionLabel}>DOWNLOAD REPORT</div>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={sectionLabel}>Download Report</div>
+            <div style={{ display: 'flex', gap: 8 }}>
               <a
                 href={`${BACKEND}/reports/${state.runId}.pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={dlBtnStyle}
+                target="_blank" rel="noopener noreferrer"
+                style={dlStyle}
               >
                 PDF
               </a>
               <a
                 href={`${BACKEND}/reports/${state.runId}.docx`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={dlBtnStyle}
+                target="_blank" rel="noopener noreferrer"
+                style={dlStyle}
               >
-                DOCX
+                Word
               </a>
             </div>
           </div>
         )}
 
-        {/* Event log / results */}
+        {/* Results / log */}
         <div style={{ flex: 1, minHeight: 0 }}>
-          <div style={sectionLabel}>
-            {state.result ? 'RESULTS' : 'LIVE LOG'}
-          </div>
-          <div style={{ height: 280, overflow: 'auto' }}>
+          <div style={sectionLabel}>{state.result ? 'Results' : 'Live Log'}</div>
+          <div style={{ height: 280, overflow: 'auto', background: BG, borderRadius: 8, border: `1px solid ${BORDER}`, padding: 10 }}>
             {state.result ? (
               <ResultsPanel result={state.result} />
             ) : (
@@ -213,10 +202,11 @@ export function HUD({ state, onStartRun }: HUDProps) {
 
       {/* Footer */}
       <div style={{
-        borderTop: '1px solid #1A1A1A', padding: '5px 14px',
-        fontSize: 7, color: '#333', letterSpacing: '0.05em', textAlign: 'center',
+        borderTop: `1px solid ${BORDER}`, padding: '8px 16px',
+        fontSize: 10, color: '#BBBBBB', textAlign: 'center',
+        background: BG,
       }}>
-        ALL PROJECTIONS ARE ILLUSTRATIVE -- NOT INVESTMENT ADVICE
+        All projections are illustrative — not investment advice
       </div>
 
       <style>{`
@@ -227,37 +217,37 @@ export function HUD({ state, onStartRun }: HUDProps) {
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontSize: 9, fontWeight: 700, color: '#444',
-  letterSpacing: '0.2em', marginBottom: 8,
+  fontSize: 10, fontWeight: 700, color: MUTED,
+  letterSpacing: '0.12em', marginBottom: 8,
+  textTransform: 'uppercase',
+  fontFamily: 'Arial, sans-serif',
 }
 
 function btnStyle(active: boolean, variant: 'primary' | 'secondary'): React.CSSProperties {
   return {
-    flex: 1, padding: '9px 10px',
-    background: active ? (variant === 'primary' ? ORANGE : 'transparent') : '#1A1A1A',
-    border: `1.5px solid ${active ? (variant === 'primary' ? ORANGE : '#444') : '#222'}`,
-    color: active ? (variant === 'primary' ? '#000' : '#888') : '#333',
-    fontFamily: '"Courier New", monospace',
-    fontSize: 10, fontWeight: 700,
+    flex: 1, padding: '10px 12px',
+    background: active ? (variant === 'primary' ? ORANGE : '#FFFFFF') : '#F5F5F5',
+    border: `1.5px solid ${active ? (variant === 'primary' ? ORANGE : BORDER) : '#E5E5E5'}`,
+    color: active ? (variant === 'primary' ? '#FFFFFF' : TEXT) : '#AAAAAA',
+    fontFamily: 'Arial, sans-serif',
+    fontSize: 12, fontWeight: 700,
     cursor: active ? 'pointer' : 'not-allowed',
-    letterSpacing: '0.08em',
+    borderRadius: 7,
     transition: 'all 0.15s',
-    borderRadius: 2,
   }
 }
 
-const dlBtnStyle: React.CSSProperties = {
-  flex: 1, padding: '9px 10px',
-  background: '#0D2A14',
-  border: '1.5px solid #228833',
-  color: '#33CC55',
-  fontFamily: '"Courier New", monospace',
-  fontSize: 10, fontWeight: 700,
+const dlStyle: React.CSSProperties = {
+  flex: 1, padding: '10px 12px',
+  background: '#F0FAF4',
+  border: `1.5px solid ${GREEN}`,
+  color: GREEN,
+  fontFamily: 'Arial, sans-serif',
+  fontSize: 12, fontWeight: 700,
   cursor: 'pointer',
-  letterSpacing: '0.12em',
+  borderRadius: 7,
   textDecoration: 'none',
   textAlign: 'center',
   display: 'block',
-  borderRadius: 2,
   transition: 'all 0.15s',
 }

@@ -2,28 +2,31 @@ import { useState, useEffect } from 'react'
 import type { PipelineState } from '../hooks/usePipelineWS'
 import type { WorkerInfo, WorkerStatus, RoomInfo } from '../types'
 
-const ORANGE  = '#FF6600'
-const DARK    = '#1A1A1A'
-const MID     = '#2D2D2D'
-const LIGHT   = '#F0F0F0'
-const GREY    = '#888888'
-const GREEN   = '#22AA44'
-const BLUE    = '#2266EE'
+const ORANGE  = '#FF5500'
+const GREEN   = '#1A9940'
+const BLUE    = '#1155CC'
+const RED     = '#CC2222'
+const GREY    = '#777777'
+const BORDER  = '#E0E0E0'
+const BG      = '#F7F8FA'
+const CARD    = '#FFFFFF'
+const TEXT    = '#1A1A1A'
+const MUTED   = '#888888'
 
 const STATUS_COLOR: Record<WorkerStatus, string> = {
-  idle:     '#444444',
+  idle:     '#CCCCCC',
   learning: BLUE,
   working:  ORANGE,
-  stuck:    '#CC2222',
+  stuck:    RED,
   done:     GREEN,
 }
 
 const STATUS_LABEL: Record<WorkerStatus, string> = {
-  idle:     'IDLE',
-  learning: 'SEARCH',
-  working:  'WORK',
-  stuck:    'STUCK',
-  done:     'DONE',
+  idle:     'Idle',
+  learning: 'Searching',
+  working:  'Working',
+  stuck:    'Stuck',
+  done:     'Done',
 }
 
 // ── Speech Bubble ─────────────────────────────────────────────────────────────
@@ -33,298 +36,279 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
   return (
     <div style={{
       position: 'absolute',
-      bottom: 'calc(100% + 8px)',
+      bottom: 'calc(100% + 10px)',
       left: '50%',
       transform: 'translateX(-50%)',
-      zIndex: 30,
+      zIndex: 40,
       pointerEvents: 'none',
-      animation: 'bubble-in 0.18s ease-out',
+      animation: 'bubbleIn 0.15s ease-out',
+      minWidth: 120,
+      maxWidth: 180,
     }}>
-      {/* Bubble body */}
       <div style={{
-        background: '#0A0A0A',
-        border: `1px solid ${color}`,
-        borderRadius: 3,
-        padding: '4px 8px',
-        fontSize: 9,
-        color: '#DDDDDD',
+        background: CARD,
+        border: `1.5px solid ${color}`,
+        borderRadius: 6,
+        padding: '5px 10px',
+        fontSize: 11,
+        color: TEXT,
         whiteSpace: 'nowrap',
-        maxWidth: 150,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        fontFamily: '"Courier New", monospace',
-        boxShadow: `0 0 10px ${color}55, inset 0 0 6px ${color}11`,
+        fontFamily: 'Arial, sans-serif',
+        boxShadow: `0 2px 12px rgba(0,0,0,0.12)`,
         lineHeight: 1.4,
+        textAlign: 'center',
       }}>
-        <span style={{ color: color, marginRight: 3 }}>
-          {color === BLUE ? '🔍' : '▶'}
+        <span style={{ color, fontWeight: 600, marginRight: 4 }}>
+          {color === BLUE ? '⌕' : '▸'}
         </span>
-        {text}
+        {text.length > 22 ? text.slice(0, 22) + '…' : text}
       </div>
-      {/* Triangle pointer */}
       <div style={{
         width: 0, height: 0,
-        borderLeft: '5px solid transparent',
-        borderRight: '5px solid transparent',
-        borderTop: `5px solid ${color}`,
+        borderLeft: '6px solid transparent',
+        borderRight: '6px solid transparent',
+        borderTop: `6px solid ${color}`,
         margin: '0 auto',
       }} />
     </div>
   )
 }
 
-// ── Low-Poly Worker Figure ────────────────────────────────────────────────────
+// ── Worker Card ───────────────────────────────────────────────────────────────
 
-function WorkerFigure({ worker, index }: { worker: WorkerInfo; index: number }) {
-  const color   = STATUS_COLOR[worker.status]
-  const label   = worker.worker_id.replace(/\D/g, '').slice(-2).padStart(2, '0') || String(index + 1).padStart(2, '0')
+function WorkerCard({ worker, index }: { worker: WorkerInfo; index: number }) {
+  const color    = STATUS_COLOR[worker.status]
+  const label    = worker.worker_id.replace(/\D/g, '').slice(-2).padStart(2, '0')
   const isActive = worker.status === 'learning' || worker.status === 'working'
   const isDone   = worker.status === 'done'
-
-  const bubbleText = isActive ? (worker.currentAction || (worker.status === 'learning' ? 'searching...' : worker.task_title)) : ''
+  const bubbleText = isActive
+    ? (worker.currentAction || (worker.status === 'learning' ? 'Searching…' : worker.task_title))
+    : ''
 
   return (
     <div
       title={`${worker.worker_id}: ${worker.task_title} [${worker.status}]`}
       style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        gap: 2, userSelect: 'none', position: 'relative',
-        filter: isDone ? 'grayscale(0.55)' : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4,
+        position: 'relative',
         opacity: worker.status === 'idle' ? 0.45 : 1,
-        transition: 'opacity 0.3s, filter 0.3s',
-        animation: isActive ? (worker.status === 'learning' ? 'w-learn 2s ease-in-out infinite' : 'w-work 1.4s ease-in-out infinite') : 'none',
+        transition: 'opacity 0.3s',
+        animation: worker.status === 'working' ? 'workerWork 1.6s ease-in-out infinite'
+          : worker.status === 'learning' ? 'workerLearn 2s ease-in-out infinite'
+          : 'none',
       }}
     >
-      {/* Speech bubble — appears above */}
       {bubbleText && <SpeechBubble text={bubbleText} color={color} />}
 
-      {/* ── Monitor (low-poly with hard 3D shadow) ── */}
+      {/* Monitor */}
       <div style={{
-        width: 38, height: 26,
-        background: isActive ? '#091620' : '#222',
-        border: `1.5px solid ${isActive ? color : '#3A3A3A'}`,
-        position: 'relative',
-        boxShadow: isActive
-          ? `3px 3px 0 #000, 0 0 14px ${color}44`
-          : '3px 3px 0 #000',
+        width: 40, height: 28,
+        background: isActive ? '#F0F4FF' : '#F5F5F5',
+        border: `2px solid ${isActive ? color : BORDER}`,
+        borderRadius: 3,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        gap: 2,
+        boxShadow: isActive ? `0 0 0 2px ${color}22` : 'none',
         transition: 'all 0.3s',
-        flexShrink: 0,
+        position: 'relative',
       }}>
-        {/* Screen */}
-        <div style={{
-          position: 'absolute', top: 2, left: 2, right: 2, bottom: 2,
-          background: isActive ? '#040E18' : '#111',
-          overflow: 'hidden',
-        }}>
-          {worker.status === 'working' && (
-            <div style={{ padding: '3px 3px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[18, 26, 14, 22, 10].map((w, i) => (
-                <div key={i} style={{
-                  height: 2, width: w, background: ORANGE,
-                  borderRadius: 1, opacity: 0.7 - i * 0.1,
-                }} />
-              ))}
-            </div>
-          )}
-          {worker.status === 'learning' && (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{
-                width: 11, height: 11, borderRadius: '50%',
-                border: `2px solid ${BLUE}`,
-                borderTopColor: 'transparent',
-                animation: 'spin 0.7s linear infinite',
-              }} />
-            </div>
-          )}
-          {isDone && (
-            <div style={{
-              height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: GREEN, fontSize: 12, fontWeight: 700,
-            }}>✓</div>
-          )}
-          {worker.status === 'idle' && (
-            <div style={{
-              height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#333', fontSize: 7, letterSpacing: '0.1em',
-            }}>---</div>
-          )}
-        </div>
-        {/* Monitor stand */}
+        {worker.status === 'working' && [0,1,2].map(i => (
+          <div key={i} style={{
+            height: 2, borderRadius: 1,
+            width: [22, 16, 10][i],
+            background: ORANGE, opacity: 1 - i * 0.25,
+          }} />
+        ))}
+        {worker.status === 'learning' && (
+          <div style={{
+            width: 10, height: 10, borderRadius: '50%',
+            border: `2px solid ${BLUE}`,
+            borderTopColor: 'transparent',
+            animation: 'spin 0.7s linear infinite',
+          }} />
+        )}
+        {isDone && (
+          <span style={{ fontSize: 13, color: GREEN }}>✓</span>
+        )}
+        {worker.status === 'idle' && (
+          <span style={{ fontSize: 9, color: '#CCC' }}>_ _</span>
+        )}
+        {/* stand */}
         <div style={{
           position: 'absolute', bottom: -5, left: '50%',
           transform: 'translateX(-50%)',
-          width: 11, height: 5, background: '#2A2A2A',
-          boxShadow: '2px 2px 0 #111',
-        }} />
-        {/* 3D right edge */}
-        <div style={{
-          position: 'absolute', top: 2, right: -3, bottom: -3,
-          width: 3, background: '#111', transform: 'skewY(-5deg)',
-        }} />
-        {/* 3D bottom edge */}
-        <div style={{
-          position: 'absolute', bottom: -3, left: 2, right: -3,
-          height: 3, background: '#0A0A0A',
+          width: 10, height: 5,
+          background: BORDER, borderRadius: '0 0 2px 2px',
         }} />
       </div>
 
-      {/* ── Desk (isometric style) ── */}
+      {/* Desk */}
       <div style={{
-        width: 50, height: 6,
-        background: '#6B4820',
-        boxShadow: '3px 3px 0 #2D1A08',
-        marginTop: 3, flexShrink: 0,
-        clipPath: 'polygon(0% 0%, 100% 0%, 96% 100%, 4% 100%)',
+        width: 52, height: 5,
+        background: isActive ? '#E8D5C0' : '#E8E8E8',
+        borderRadius: 2,
+        marginTop: 2,
       }} />
 
-      {/* ── Body — low-poly trapezoid ── */}
+      {/* Avatar circle */}
       <div style={{
-        width: 20, height: 12,
-        background: color,
-        clipPath: 'polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%)',
-        opacity: isDone ? 0.6 : 0.9,
-        boxShadow: isActive ? `0 0 8px ${color}66` : 'none',
-        transition: 'box-shadow 0.3s',
-        flexShrink: 0,
-      }} />
-
-      {/* ── Head — hexagonal low-poly ── */}
-      <div style={{
-        width: 18, height: 18,
-        background: isActive ? color : `${color}BB`,
-        clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+        width: 26, height: 26, borderRadius: '50%',
+        background: isDone ? '#EEF5EE' : isActive ? `${color}18` : '#F0F0F0',
+        border: `2px solid ${isDone ? GREEN : isActive ? color : BORDER}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 7, color: '#fff', fontWeight: 700,
-        boxShadow: isActive ? `0 0 10px ${color}88` : 'none',
+        fontSize: 9, fontWeight: 700, color: isDone ? GREEN : isActive ? color : MUTED,
+        fontFamily: 'Arial, sans-serif',
         transition: 'all 0.3s',
-        flexShrink: 0,
-        letterSpacing: '0',
+        boxShadow: isActive ? `0 0 0 3px ${color}22` : 'none',
       }}>{label}</div>
 
-      {/* ── Status badge ── */}
+      {/* Status pill */}
       <div style={{
-        fontSize: 8, color, fontWeight: 700,
-        letterSpacing: '0.06em',
-        padding: '1px 4px',
-        background: `${color}18`,
-        border: `0.5px solid ${color}55`,
-        lineHeight: 1.3,
+        fontSize: 9, fontWeight: 600,
+        color: isDone ? GREEN : isActive ? color : MUTED,
+        fontFamily: 'Arial, sans-serif',
+        letterSpacing: '0.02em',
+        background: isDone ? '#EEF5EE' : isActive ? `${color}12` : '#F5F5F5',
+        padding: '1px 6px',
+        borderRadius: 10,
+        border: `1px solid ${isDone ? GREEN + '44' : isActive ? color + '33' : BORDER}`,
       }}>
         {STATUS_LABEL[worker.status]}
-        {worker.currentRound && worker.status === 'working' ? ` R${worker.currentRound}` : ''}
+        {worker.currentRound && worker.status === 'working' ? ` · R${worker.currentRound}` : ''}
       </div>
     </div>
   )
 }
 
-// ── CEO Floor ─────────────────────────────────────────────────────────────────
+// ── CEO Bar ───────────────────────────────────────────────────────────────────
 
-function CEOFloor({ active, message }: { active: boolean; message: string }) {
+function CEOBar({ active, message }: { active: boolean; message: string }) {
   return (
     <div style={{
-      background: active ? '#150800' : '#0D0D0D',
-      border: `2px solid ${active ? ORANGE : '#2A2A2A'}`,
-      borderRadius: 5,
+      background: CARD,
+      border: `1.5px solid ${active ? ORANGE : BORDER}`,
+      borderRadius: 8,
       padding: '10px 18px',
-      display: 'flex', alignItems: 'center', gap: 18,
-      boxShadow: active ? `0 0 24px ${ORANGE}33` : 'none',
-      transition: 'all 0.6s',
-      flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 16,
+      boxShadow: active ? `0 2px 16px ${ORANGE}22` : '0 1px 4px rgba(0,0,0,0.06)',
+      transition: 'all 0.5s',
     }}>
-      {/* CEO avatar — low-poly diamond */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-        <div style={{
-          width: 44, height: 44,
-          background: active
-            ? `linear-gradient(135deg, ${ORANGE} 0%, #994400 100%)`
-            : '#2A2A2A',
-          clipPath: 'polygon(50% 0%, 100% 30%, 100% 70%, 50% 100%, 0% 70%, 0% 30%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, color: '#fff', fontWeight: 900,
-          boxShadow: active ? `0 0 20px ${ORANGE}88` : 'none',
-          animation: active ? 'ceo-pulse 2s ease-in-out infinite' : 'none',
-          transition: 'all 0.5s',
-          letterSpacing: '0.05em',
-        }}>CEO</div>
-        <div style={{ fontSize: 9, color: active ? ORANGE : '#444', letterSpacing: '0.15em', fontWeight: 700 }}>
-          {active ? 'ACTIVE' : 'STANDBY'}
-        </div>
-      </div>
+      {/* CEO avatar */}
+      <div style={{
+        width: 44, height: 44, borderRadius: '50%',
+        background: active ? ORANGE : '#F0F0F0',
+        border: `3px solid ${active ? ORANGE : BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 11, fontWeight: 700,
+        color: active ? '#FFF' : MUTED,
+        fontFamily: 'Arial, sans-serif',
+        boxShadow: active ? `0 0 0 4px ${ORANGE}22` : 'none',
+        animation: active ? 'ceoPulse 2s ease-in-out infinite' : 'none',
+        transition: 'all 0.4s',
+        letterSpacing: '0.03em',
+        flexShrink: 0,
+      }}>CEO</div>
 
-      {/* Message area */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: '#555', fontWeight: 700, letterSpacing: '0.2em', marginBottom: 6 }}>
-          EXECUTIVE FLOOR — CHIEF ANALYST
+        <div style={{
+          fontSize: 10, fontWeight: 600, color: MUTED,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+          fontFamily: 'Arial, sans-serif', marginBottom: 4,
+        }}>
+          Chief Analyst — Executive Floor
         </div>
         <div style={{
-          fontSize: 13, color: active ? '#EEE' : '#555',
-          fontStyle: 'italic', lineHeight: 1.5,
-          transition: 'color 0.4s',
+          fontSize: 14, color: active ? TEXT : MUTED,
+          fontFamily: 'Arial, sans-serif',
+          fontStyle: 'italic',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          transition: 'color 0.3s',
         }}>
-          {active ? `"${message}"` : '"Awaiting dataset..."'}
+          {active ? `"${message}"` : '"Awaiting dataset…"'}
         </div>
       </div>
 
-      {/* ASCII art corner decoration */}
-      <div style={{ fontSize: 18, color: active ? `${ORANGE}55` : '#222', fontWeight: 700, flexShrink: 0, lineHeight: 1 }}>
-        {'╔╗\n╚╝'}
+      <div style={{
+        fontSize: 11, fontWeight: 600,
+        color: active ? ORANGE : '#CCC',
+        fontFamily: 'Arial, sans-serif',
+        letterSpacing: '0.1em',
+        background: active ? `${ORANGE}12` : '#F5F5F5',
+        padding: '4px 10px', borderRadius: 12,
+        border: `1px solid ${active ? ORANGE + '33' : BORDER}`,
+      }}>
+        {active ? '● ACTIVE' : '○ STANDBY'}
       </div>
     </div>
   )
 }
 
-// ── Manager Office ────────────────────────────────────────────────────────────
+// ── Manager Panel ─────────────────────────────────────────────────────────────
 
-function ManagerOffice({ room, active }: { room: RoomInfo; active: boolean }) {
+function ManagerPanel({ room, active }: { room: RoomInfo; active: boolean }) {
   const isWriting = room.status === 'active'
-  const progress = room.task_count > 0 ? room.tasks_done / room.task_count : 0
+  const progress  = room.task_count > 0 ? room.tasks_done / room.task_count : 0
 
   return (
     <div style={{
-      width: 120, flexShrink: 0,
-      background: '#0D0800',
-      border: `1px solid ${active ? ORANGE + '66' : '#2A2A2A'}`,
-      borderRadius: 4,
-      padding: '10px 10px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
+      width: 130,
+      background: active ? `${ORANGE}08` : '#F9F9F9',
+      border: `1.5px solid ${active ? ORANGE + '66' : BORDER}`,
+      borderRadius: 8,
+      padding: '12px 10px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
     }}>
-      <div style={{ fontSize: 9, color: ORANGE, fontWeight: 700, letterSpacing: '0.15em' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.1em', fontFamily: 'Arial, sans-serif' }}>
         MANAGER
       </div>
 
-      {/* Manager avatar — low-poly diamond */}
       <div style={{
-        width: 46, height: 46,
-        background: active
-          ? `linear-gradient(135deg, ${ORANGE} 0%, #884400 100%)`
-          : '#252525',
-        clipPath: 'polygon(50% 0%, 100% 30%, 100% 70%, 50% 100%, 0% 70%, 0% 30%)',
+        width: 48, height: 48, borderRadius: '50%',
+        background: active ? ORANGE : '#EEEEEE',
+        border: `3px solid ${active ? ORANGE : BORDER}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, color: '#fff', fontWeight: 700,
-        boxShadow: active ? `0 0 14px ${ORANGE}55` : 'none',
-        animation: isWriting ? 'mgr-write 1.8s ease-in-out infinite' : 'none',
+        fontSize: 11, fontWeight: 700,
+        color: active ? '#FFF' : MUTED,
+        fontFamily: 'Arial, sans-serif',
+        animation: isWriting ? 'mgrWrite 1.8s ease-in-out infinite' : 'none',
         transition: 'all 0.4s',
-        letterSpacing: '0.05em',
       }}>MGR</div>
 
-      <div style={{ fontSize: 9, color: active ? '#CCC' : '#444', textAlign: 'center', lineHeight: 1.5 }}>
-        {isWriting ? (
-          <span style={{ color: ORANGE }}>Writing report…</span>
-        ) : active ? (
-          <span>Reviewing team</span>
-        ) : (
-          <span style={{ color: '#333' }}>Standby</span>
-        )}
+      <div style={{
+        fontSize: 11, color: active ? TEXT : MUTED,
+        textAlign: 'center', lineHeight: 1.5,
+        fontFamily: 'Arial, sans-serif',
+      }}>
+        {isWriting ? <span style={{ color: ORANGE, fontWeight: 600 }}>Writing report…</span>
+          : active ? 'Reviewing team'
+          : 'Standby'}
       </div>
 
-      {/* Mini progress ring as ASCII */}
-      <div style={{ fontSize: 9, color: '#555', fontFamily: '"Courier New", monospace', textAlign: 'center', lineHeight: 1.3 }}>
-        {`[${Math.round(progress * 10) > 0 ? '█'.repeat(Math.min(Math.round(progress * 5), 5)) + '░'.repeat(5 - Math.min(Math.round(progress * 5), 5)) : '░░░░░'}]`}
-        <br />
-        <span style={{ color: active ? ORANGE : '#333', fontSize: 8 }}>
-          {room.tasks_done}/{room.task_count}
-        </span>
+      {/* Progress */}
+      <div style={{ width: '100%' }}>
+        <div style={{
+          height: 4, background: BORDER, borderRadius: 2, overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%',
+            width: `${Math.round(progress * 100)}%`,
+            background: room.status === 'complete' ? GREEN : ORANGE,
+            borderRadius: 2,
+            transition: 'width 0.6s ease',
+          }} />
+        </div>
+        <div style={{
+          fontSize: 10, color: MUTED, textAlign: 'center', marginTop: 4,
+          fontFamily: 'Arial, sans-serif',
+        }}>
+          {room.tasks_done} / {room.task_count} tasks
+        </div>
       </div>
     </div>
   )
@@ -335,43 +319,51 @@ function ManagerOffice({ room, active }: { room: RoomInfo; active: boolean }) {
 function TaskBoard({ room }: { room: RoomInfo }) {
   if (!room.workers.length) return null
   const done = room.workers.filter(w => w.status === 'done').length
+
   return (
     <div style={{
-      background: '#0A0A0A', border: '1px solid #252525',
-      borderRadius: 3, padding: '8px 10px',
-      minWidth: 170, flexShrink: 0,
-      display: 'flex', flexDirection: 'column', flex: 1,
+      background: CARD,
+      border: `1.5px solid ${BORDER}`,
+      borderRadius: 8,
+      padding: '10px 12px',
+      minWidth: 175, flex: 1,
+      display: 'flex', flexDirection: 'column',
     }}>
       <div style={{
-        fontSize: 9, color: ORANGE, fontWeight: 700, letterSpacing: '0.15em',
-        marginBottom: 6, display: 'flex', justifyContent: 'space-between',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 8,
       }}>
-        <span>TASK BOARD</span>
-        <span style={{ color: done === room.workers.length ? GREEN : '#666' }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: '0.1em', fontFamily: 'Arial, sans-serif' }}>
+          TASKS
+        </span>
+        <span style={{
+          fontSize: 11, fontWeight: 700,
+          color: done === room.workers.length && done > 0 ? GREEN : MUTED,
+          fontFamily: 'Arial, sans-serif',
+        }}>
           {done}/{room.workers.length}
         </span>
       </div>
       <div style={{ overflowY: 'auto', maxHeight: 300 }}>
         {room.workers.map(w => (
           <div key={w.worker_id} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            marginBottom: 3, padding: '1px 0',
-            borderBottom: '1px solid #111',
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '3px 0',
+            borderBottom: `1px solid ${BG}`,
           }}>
             <div style={{
-              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
               background: STATUS_COLOR[w.status],
-              boxShadow: (w.status === 'working' || w.status === 'learning')
-                ? `0 0 5px ${STATUS_COLOR[w.status]}` : 'none',
             }} />
             <div style={{
-              fontSize: 9,
-              color: w.status === 'done' ? '#3A3A3A'
-                : w.status === 'idle' ? '#444'
-                : '#CCC',
+              fontSize: 11,
+              color: w.status === 'done' ? '#BBBBBB'
+                : w.status === 'idle' ? '#CCCCCC'
+                : TEXT,
               textDecoration: w.status === 'done' ? 'line-through' : 'none',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               flex: 1,
+              fontFamily: 'Arial, sans-serif',
             }}>
               {w.task_title}
             </div>
@@ -382,174 +374,176 @@ function TaskBoard({ room }: { room: RoomInfo }) {
   )
 }
 
-// ── Room Floor ────────────────────────────────────────────────────────────────
+// ── Room Card ─────────────────────────────────────────────────────────────────
 
-function RoomFloor({ room }: { room: RoomInfo }) {
+function RoomCard({ room }: { room: RoomInfo }) {
   const active   = room.status === 'active'
   const complete = room.status === 'complete'
   const progress = room.task_count > 0 ? room.tasks_done / room.task_count : 0
-  const statusColor = { idle: '#333', active: ORANGE, complete: GREEN, error: '#CC2222' }[room.status]
+  const accent   = active ? ORANGE : complete ? GREEN : BORDER
 
-  const workersByStatus = {
-    learning: room.workers.filter(w => w.status === 'learning').length,
-    working:  room.workers.filter(w => w.status === 'working').length,
-    done:     room.workers.filter(w => w.status === 'done').length,
-  }
+  const searching = room.workers.filter(w => w.status === 'learning').length
+  const working   = room.workers.filter(w => w.status === 'working').length
+  const done      = room.workers.filter(w => w.status === 'done').length
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12,
-      background: active ? '#0A0400' : '#090909',
-      border: `2px solid ${statusColor}`,
-      borderRadius: 6,
-      padding: '14px 18px',
-      boxShadow: active ? `inset 0 0 40px ${ORANGE}0D, 0 0 24px ${ORANGE}22` : 'none',
-      transition: 'all 0.5s',
+      background: CARD,
+      border: `2px solid ${accent}`,
+      borderRadius: 10,
+      padding: '16px 20px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+      boxShadow: active
+        ? `0 4px 24px ${ORANGE}18`
+        : complete ? `0 2px 12px ${GREEN}12`
+        : '0 1px 6px rgba(0,0,0,0.06)',
+      transition: 'all 0.4s',
     }}>
 
-      {/* Room header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
-          width: 10, height: 10, flexShrink: 0,
-          background: statusColor,
-          clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-          boxShadow: active ? `0 0 10px ${ORANGE}` : 'none',
-          animation: active ? 'dot-pulse 1.5s ease-in-out infinite' : 'none',
+          width: 10, height: 10, borderRadius: '50%',
+          background: accent,
+          boxShadow: active ? `0 0 0 3px ${ORANGE}33` : 'none',
+          animation: active ? 'dotPulse 1.5s ease-in-out infinite' : 'none',
+          flexShrink: 0,
         }} />
-        <span style={{ fontSize: 18, fontWeight: 700, color: active ? ORANGE : '#777', letterSpacing: '0.15em' }}>
-          {room.name.toUpperCase()}
-        </span>
+
         <span style={{
-          fontSize: 10, color: statusColor, letterSpacing: '0.12em',
-          border: `1px solid ${statusColor}44`, padding: '1px 6px',
+          fontSize: 18, fontWeight: 700,
+          color: active ? ORANGE : complete ? GREEN : TEXT,
+          fontFamily: 'Arial, sans-serif',
+          letterSpacing: '-0.01em',
         }}>
-          {room.status.toUpperCase()}
+          {room.name}
         </span>
 
-        {/* Live worker counts */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: 10, color: GREY }}>
-          {workersByStatus.learning > 0 && (
-            <span style={{ color: BLUE, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9 }}>SEARCH</span>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>{workersByStatus.learning}</span>
-            </span>
+        <span style={{
+          fontSize: 11, fontWeight: 600,
+          color: active ? ORANGE : complete ? GREEN : MUTED,
+          background: active ? `${ORANGE}12` : complete ? `${GREEN}12` : BG,
+          border: `1px solid ${accent}44`,
+          padding: '2px 8px', borderRadius: 10,
+          fontFamily: 'Arial, sans-serif',
+        }}>
+          {room.status.charAt(0).toUpperCase() + room.status.slice(1)}
+        </span>
+
+        {/* Live counters */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          {searching > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: BLUE,
+              background: `${BLUE}10`, padding: '2px 8px', borderRadius: 10,
+              fontFamily: 'Arial, sans-serif',
+            }}>⌕ {searching} searching</span>
           )}
-          {workersByStatus.working > 0 && (
-            <span style={{ color: ORANGE, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9 }}>WORK</span>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>{workersByStatus.working}</span>
-            </span>
+          {working > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: ORANGE,
+              background: `${ORANGE}10`, padding: '2px 8px', borderRadius: 10,
+              fontFamily: 'Arial, sans-serif',
+            }}>▸ {working} working</span>
           )}
-          {workersByStatus.done > 0 && (
-            <span style={{ color: GREEN, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9 }}>DONE</span>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>{workersByStatus.done}</span>
-            </span>
+          {done > 0 && !complete && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: GREEN,
+              background: `${GREEN}10`, padding: '2px 8px', borderRadius: 10,
+              fontFamily: 'Arial, sans-serif',
+            }}>✓ {done} done</span>
           )}
-          <span style={{ color: '#444', fontSize: 10 }}>{room.tasks_done}/{room.task_count}</span>
+          {complete && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: GREEN,
+              background: `${GREEN}12`, padding: '2px 10px', borderRadius: 10,
+              fontFamily: 'Arial, sans-serif',
+            }}>✓ Complete</span>
+          )}
         </div>
       </div>
 
-      {/* Main floor area */}
-      <div style={{ display: 'flex', gap: 14, minHeight: room.workers.length > 15 ? 360 : room.workers.length > 0 ? 220 : 90 }}>
-
-        {/* Worker desks — overflow visible so bubbles float up */}
+      {/* Floor */}
+      <div style={{
+        display: 'flex', gap: 14,
+        minHeight: room.workers.length > 15 ? 380 : room.workers.length > 0 ? 240 : 80,
+      }}>
+        {/* Worker grid */}
         <div style={{
           flex: 1,
-          background: '#0D0D0D',
-          border: '1px solid #1A1A1A',
-          borderRadius: 4,
-          padding: '36px 14px 14px',   // extra top padding for speech bubbles
+          background: BG,
+          borderRadius: 6,
+          border: `1px solid ${BORDER}`,
+          padding: '40px 16px 16px',
           position: 'relative',
           overflow: 'visible',
         }}>
-          {/* Floor tile grid texture */}
-          <div style={{
-            position: 'absolute', inset: 0, borderRadius: 4,
-            backgroundImage: `
-              linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)
-            `,
-            backgroundSize: '48px 48px',
-            pointerEvents: 'none',
-            overflow: 'hidden',
-          }} />
-
-          {/* Room number watermark */}
-          <div style={{
-            position: 'absolute', right: 10, bottom: 8,
-            fontSize: 48, fontWeight: 700, color: '#FFFFFF08',
-            letterSpacing: '-0.05em', pointerEvents: 'none', userSelect: 'none',
-            lineHeight: 1,
-          }}>
-            {room.stage + 1}
-          </div>
-
           {room.workers.length === 0 ? (
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#282828', fontSize: 13, letterSpacing: '0.5em',
+              color: '#CCCCCC', fontSize: 13,
+              fontFamily: 'Arial, sans-serif', letterSpacing: '0.05em',
             }}>
-              AWAITING DEPLOYMENT
+              Awaiting deployment…
             </div>
           ) : (
             <div style={{
               display: 'grid',
               gridTemplateColumns: `repeat(${
-                room.workers.length <= 4 ? room.workers.length :
-                room.workers.length <= 12 ? 4 : 5
+                room.workers.length <= 4 ? room.workers.length
+                  : room.workers.length <= 12 ? 4 : 5
               }, 1fr)`,
-              gap: '28px 14px',
+              gap: '32px 16px',
               justifyItems: 'center',
               position: 'relative',
             }}>
               {room.workers.map((w, i) => (
-                <WorkerFigure key={w.worker_id} worker={w} index={i} />
+                <WorkerCard key={w.worker_id} worker={w} index={i} />
               ))}
             </div>
           )}
 
-          {complete && (
-            <div style={{
-              position: 'absolute', bottom: 8, right: 12,
-              fontSize: 11, color: GREEN, fontWeight: 700,
-              letterSpacing: '0.15em',
-              display: 'flex', alignItems: 'center', gap: 5,
-              background: '#001A08', padding: '3px 8px',
-              border: `1px solid ${GREEN}44`,
-            }}>
-              <span style={{ fontSize: 14 }}>✓</span> ANALYSIS COMPLETE
-            </div>
-          )}
+          {/* Room number watermark */}
+          <div style={{
+            position: 'absolute', right: 12, bottom: 8,
+            fontSize: 64, fontWeight: 900, color: 'rgba(0,0,0,0.04)',
+            pointerEvents: 'none', userSelect: 'none', lineHeight: 1,
+            fontFamily: 'Arial, sans-serif',
+          }}>{room.stage + 1}</div>
         </div>
 
-        {/* Right panel: task board + manager */}
+        {/* Right panel */}
         {room.workers.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 170, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 175, flexShrink: 0 }}>
             <TaskBoard room={room} />
-            <ManagerOffice room={room} active={active} />
+            <ManagerPanel room={room} active={active} />
           </div>
         )}
       </div>
 
       {/* Progress bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <span style={{ fontSize: 10, color: '#555', letterSpacing: '0.15em', minWidth: 68 }}>PROGRESS</span>
-        <div style={{ flex: 1, height: 5, background: '#1A1A1A', borderRadius: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 11, color: MUTED, fontFamily: 'Arial, sans-serif', minWidth: 60 }}>
+          Progress
+        </span>
+        <div style={{
+          flex: 1, height: 6,
+          background: '#EEEEEE',
+          borderRadius: 3, overflow: 'hidden',
+        }}>
           <div style={{
             height: '100%',
             width: `${Math.round(progress * 100)}%`,
-            background: complete
-              ? GREEN
-              : `linear-gradient(90deg, ${ORANGE} 0%, #FF9933 100%)`,
-            boxShadow: active && progress > 0 ? `0 0 10px ${ORANGE}88` : 'none',
+            background: complete ? GREEN : ORANGE,
+            borderRadius: 3,
             transition: 'width 0.7s ease',
           }} />
         </div>
         <span style={{
-          fontSize: 11, color: active ? ORANGE : complete ? GREEN : '#555',
-          minWidth: 36, textAlign: 'right', fontWeight: 700,
+          fontSize: 12, fontWeight: 700,
+          color: active ? ORANGE : complete ? GREEN : MUTED,
+          fontFamily: 'Arial, sans-serif', minWidth: 36, textAlign: 'right',
         }}>
           {Math.round(progress * 100)}%
         </span>
@@ -567,27 +561,24 @@ interface OfficeViewProps {
 }
 
 export function OfficeView({ state, activeFloor, onFloorChange }: OfficeViewProps) {
-  const [ceoMsg, setCeoMsg] = useState("Awaiting dataset...")
+  const [ceoMsg, setCeoMsg] = useState('Awaiting dataset…')
 
-  // Auto-switch to active floor
   const roomStatuses = state.rooms.map(r => r.status).join(',')
   useEffect(() => {
     const idx = state.rooms.findIndex(r => r.status === 'active')
     if (idx >= 0) onFloorChange(idx)
   }, [roomStatuses]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Track CEO messages
   useEffect(() => {
     const ceoEvents = state.events.filter(e =>
       e.event_type === 'ceo_thinking' || e.event_type === 'ceo_briefed' || e.event_type === 'ceo_done'
     )
     if (ceoEvents.length > 0) {
       const last = ceoEvents[ceoEvents.length - 1] as { message?: string }
-      setCeoMsg(last.message || "Analysis in progress...")
+      setCeoMsg(last.message || 'Analysis in progress…')
     }
   }, [state.events.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ceoActive = state.status === 'running'
   const room = state.rooms[activeFloor]
 
   return (
@@ -595,60 +586,58 @@ export function OfficeView({ state, activeFloor, onFloorChange }: OfficeViewProp
       flex: 1,
       display: 'flex',
       flexDirection: 'column',
-      background: '#080808',
+      background: BG,
       overflow: 'hidden',
-      fontFamily: '"Courier New", Courier, monospace',
+      fontFamily: 'Arial, sans-serif',
     }}>
 
-      {/* CEO floor header */}
-      <div style={{ padding: '12px 18px 0', flexShrink: 0 }}>
-        <CEOFloor active={ceoActive} message={ceoMsg} />
+      {/* CEO bar */}
+      <div style={{ padding: '14px 20px 0', flexShrink: 0 }}>
+        <CEOBar active={state.status === 'running'} message={ceoMsg} />
       </div>
 
-      {/* Floor navigation tabs */}
+      {/* Tab navigation */}
       <div style={{
         display: 'flex',
-        background: '#0D0D0D',
-        borderBottom: `2px solid ${ORANGE}44`,
+        background: CARD,
+        borderBottom: `2px solid ${BORDER}`,
         flexShrink: 0,
-        overflowX: 'auto',
-        padding: '8px 18px 0',
-        gap: 3,
-        marginTop: 12,
+        padding: '10px 20px 0',
+        gap: 4,
+        marginTop: 14,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
       }}>
         {state.rooms.map((r, i) => {
           const on   = activeFloor === i
-          const dot  = { idle: '#2A2A2A', active: ORANGE, complete: GREEN, error: '#CC2222' }[r.status]
+          const dot  = { idle: '#CCCCCC', active: ORANGE, complete: GREEN, error: RED }[r.status]
           const busy = r.workers.filter(w => w.status === 'working' || w.status === 'learning').length
           return (
             <button key={r.name} onClick={() => onFloorChange(i)}
               style={{
                 padding: '8px 16px 10px',
                 border: 'none',
-                background: on ? '#170A00' : 'transparent',
-                color: on ? ORANGE : '#555',
-                fontFamily: '"Courier New", monospace',
-                fontSize: 12, fontWeight: on ? 700 : 400,
-                cursor: 'pointer', letterSpacing: '0.1em',
+                background: 'transparent',
+                color: on ? ORANGE : '#888888',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: 13, fontWeight: on ? 700 : 400,
+                cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 7,
                 whiteSpace: 'nowrap',
-                borderBottom: on ? `2px solid ${ORANGE}` : '2px solid transparent',
-                borderRadius: '3px 3px 0 0',
+                borderBottom: on ? `2.5px solid ${ORANGE}` : '2.5px solid transparent',
                 transition: 'all 0.15s',
               }}>
               <span style={{
-                width: 7, height: 7,
-                background: dot,
-                clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-                display: 'inline-block', flexShrink: 0,
-                boxShadow: r.status === 'active' ? `0 0 6px ${ORANGE}` : 'none',
-                animation: r.status === 'active' ? 'dot-pulse 1.5s infinite' : 'none',
+                width: 7, height: 7, borderRadius: '50%',
+                background: dot, flexShrink: 0,
+                display: 'inline-block',
+                boxShadow: r.status === 'active' ? `0 0 0 3px ${ORANGE}33` : 'none',
+                animation: r.status === 'active' ? 'dotPulse 1.5s infinite' : 'none',
               }} />
-              {r.name.toUpperCase()}
+              {r.name}
               {busy > 0 && (
                 <span style={{
-                  fontSize: 9, background: ORANGE, color: '#000',
-                  borderRadius: 10, padding: '0 5px', fontWeight: 700, lineHeight: '14px',
+                  fontSize: 10, background: ORANGE, color: '#FFF',
+                  borderRadius: 10, padding: '1px 6px', fontWeight: 700,
                 }}>{busy}</span>
               )}
             </button>
@@ -656,66 +645,41 @@ export function OfficeView({ state, activeFloor, onFloorChange }: OfficeViewProp
         })}
       </div>
 
-      {/* Active room view */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '14px 18px' }}>
-        {room && <RoomFloor room={room} />}
+      {/* Active room */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+        {room && <RoomCard room={room} />}
       </div>
 
-      {/* Footer stats bar */}
+      {/* Footer */}
       <div style={{
-        display: 'flex', gap: 24, padding: '6px 18px',
-        borderTop: `1px solid #181818`,
-        fontSize: 11, color: '#444', flexShrink: 0,
-        background: '#080808',
-        letterSpacing: '0.08em',
+        display: 'flex', gap: 24, padding: '8px 20px',
+        borderTop: `1px solid ${BORDER}`,
+        fontSize: 12, color: MUTED, flexShrink: 0,
+        background: CARD,
+        fontFamily: 'Arial, sans-serif',
       }}>
-        <span>ROOMS {state.rooms.filter(r => r.status === 'complete').length}/{state.rooms.length}</span>
-        <span>WORKERS {state.rooms.reduce((a, r) => a + r.workers.filter(w => w.status === 'done').length, 0)}/{state.rooms.reduce((a, r) => a + r.workers.length, 0)}</span>
-        <span>TASKS {state.rooms.reduce((a, r) => a + r.tasks_done, 0)}/{state.rooms.reduce((a, r) => a + r.task_count, 0)}</span>
+        <span>Rooms: <b style={{ color: TEXT }}>{state.rooms.filter(r => r.status === 'complete').length}/{state.rooms.length}</b></span>
+        <span>Workers: <b style={{ color: TEXT }}>{state.rooms.reduce((a, r) => a + r.workers.filter(w => w.status === 'done').length, 0)}/{state.rooms.reduce((a, r) => a + r.workers.length, 0)}</b> done</span>
+        <span>Tasks: <b style={{ color: TEXT }}>{state.rooms.reduce((a, r) => a + r.tasks_done, 0)}/{state.rooms.reduce((a, r) => a + r.task_count, 0)}</b></span>
         {state.status === 'running' && (
-          <span style={{ color: ORANGE, marginLeft: 'auto', animation: 'blink 1s step-end infinite', fontWeight: 700 }}>
-            ● RUNNING
+          <span style={{ color: ORANGE, marginLeft: 'auto', fontWeight: 600, animation: 'blink 1.2s step-end infinite' }}>
+            ● Running
           </span>
         )}
         {state.status === 'complete' && (
-          <span style={{ color: GREEN, marginLeft: 'auto', fontWeight: 700 }}>✓ COMPLETE</span>
+          <span style={{ color: GREEN, marginLeft: 'auto', fontWeight: 700 }}>✓ Analysis Complete</span>
         )}
       </div>
 
       <style>{`
-        @keyframes w-learn {
-          0%, 100% { transform: scale(1) translateY(0); }
-          50%       { transform: scale(1.04) translateY(-3px); }
-        }
-        @keyframes w-work {
-          0%, 100% { transform: scale(1) rotate(0deg); }
-          50%       { transform: scale(1.03) rotate(0.5deg); }
-        }
-        @keyframes ceo-pulse {
-          0%, 100% { box-shadow: 0 0 10px ${ORANGE}55; }
-          50%       { box-shadow: 0 0 28px ${ORANGE}CC; }
-        }
-        @keyframes mgr-write {
-          0%, 100% { transform: scale(1) rotate(0deg); }
-          40%       { transform: scale(1.05) rotate(-4deg); }
-          80%       { transform: scale(1.03) rotate(2deg); }
-        }
-        @keyframes dot-pulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.35; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0; }
-        }
-        @keyframes bubble-in {
-          from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes workerWork { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes workerLearn { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        @keyframes ceoPulse { 0%,100% { box-shadow: 0 0 0 4px ${ORANGE}22; } 50% { box-shadow: 0 0 0 8px ${ORANGE}44; } }
+        @keyframes mgrWrite { 0%,100% { transform: rotate(0deg); } 40% { transform: rotate(-5deg); } 80% { transform: rotate(3deg); } }
+        @keyframes dotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes bubbleIn { from { opacity: 0; transform: translateX(-50%) translateY(6px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
       `}</style>
     </div>
   )

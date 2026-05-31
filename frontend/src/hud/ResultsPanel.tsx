@@ -10,7 +10,7 @@ interface ResultsPanelProps {
 
 export function ResultsPanel({ result }: ResultsPanelProps) {
   return (
-    <div style={{ overflowY: 'auto', fontSize: 10, fontFamily: '"Courier New", monospace', lineHeight: 1.6, color: BLACK }}>
+    <div style={{ overflowY: 'auto', fontSize: 11, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, color: BLACK }}>
 
       <div style={{ fontSize: 13, fontWeight: 700, color: BLACK, marginBottom: 8, borderBottom: `2px solid ${ACCENT}`, paddingBottom: 6 }}>
         {result.company_name}

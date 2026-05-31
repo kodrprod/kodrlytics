@@ -39,20 +39,20 @@ export function EventLog({ events }: EventLogProps) {
 
   return (
     <div style={{
-      overflowY: 'auto', fontSize: 9,
-      fontFamily: '"Courier New", monospace', lineHeight: 1.7,
-      color: BLACK,
+      overflowY: 'auto', fontSize: 11,
+      fontFamily: 'Arial, sans-serif', lineHeight: 1.7,
+      color: '#333',
     }}>
       {events.length === 0 && (
-        <div style={{ color: '#CCCCCC', fontSize: 9, letterSpacing: '0.1em' }}>
-          -- awaiting events --
+        <div style={{ color: '#AAAAAA', fontSize: 11 }}>
+          — awaiting events —
         </div>
       )}
       {events.map((e, i) => {
         const { text, color } = eventToLine(e)
         return (
           <div key={i} style={{
-            color, borderBottom: '1px solid #F0F0F0', padding: '1px 0',
+            color, borderBottom: '1px solid #F5F5F5', padding: '2px 0',
             wordBreak: 'break-word',
           }}>
             {text}

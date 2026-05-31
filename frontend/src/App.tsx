@@ -11,8 +11,8 @@ export default function App() {
     <div style={{
       width: '100vw', height: '100vh',
       display: 'flex', flexDirection: 'row',
-      background: '#080808',
-      fontFamily: '"Courier New", Courier, monospace',
+      background: '#F7F8FA',
+      fontFamily: 'Arial, sans-serif',
       overflow: 'hidden',
     }}>
       <HUD state={state} onStartRun={startRun} />
