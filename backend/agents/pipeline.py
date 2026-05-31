@@ -101,7 +101,9 @@ async def run_room_pipeline(
         await emit({"event_type": "ceo_thinking", "run_id": run_id,
                     "message": "CEO writing final executive synthesis..."})
         if ctx.dataset:
-            ceo_summary = await ceo.final_synthesis(ctx.room_reports, ctx.dataset)
+            ceo_summary = await ceo.final_synthesis(
+                ctx.room_reports, ctx.dataset, facts_store=ctx.facts_store
+            )
             # Apply grounding gate to CEO synthesis before storing
             if ctx.facts_store is not None:
                 try:

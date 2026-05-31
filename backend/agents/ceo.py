@@ -114,59 +114,79 @@ and category names from the dataset summary above wherever possible.
         self,
         room_reports: dict[str, str],
         dataset: DatasetContext,
+        facts_store=None,
     ) -> str:
         """
-        Synthesise all room reports into a CEO-level executive summary.
+        Write a single unified analyst report from all 6 room outputs.
 
-        Parameters
-        ----------
-        room_reports:
-            Mapping of room/department name -> full analysis report text.
-        dataset:
-            The original dataset context (used for company name and metadata).
-
-        Returns
-        -------
-        A 300-400 word executive summary string.
+        Rather than summarising summaries, this prompt asks Claude to read all
+        department findings and write ONE coherent document in a single analyst
+        voice — as if one senior analyst had access to all the data simultaneously.
         """
+        # Exclude the CEO key if a previous synthesis exists
+        dept_reports = {k: v for k, v in room_reports.items() if k != "CEO"}
         reports_block = "\n\n".join(
-            f"=== {dept} Report ===\n{text}" for dept, text in room_reports.items()
+            f"=== {dept} Department Findings ===\n{text}"
+            for dept, text in dept_reports.items()
+            if text and text.strip()
         )
 
-        prompt = f"""You are the CEO of Kodrlytics.
-Your six analysis departments have completed their deep-dive into {dataset.company_name!r}.
-Below are their full reports.
+        facts_section = ""
+        if facts_store is not None:
+            try:
+                facts_section = f"\n\n=== VERIFIED FACTS TABLE ===\n{facts_store.render_tables()}"
+            except Exception:
+                pass
+
+        prompt = f"""You are a senior financial analyst who has just received the full research output \
+from six specialist departments on {dataset.company_name!r}.
+
+Your job is to write a single, unified, board-ready analyst report. Do NOT write "the Analysis department found..." \
+or reference departments at all. Write as if YOU conducted the entire analysis. One voice. One document.
 
 ---
-{reports_block}
+DEPARTMENT RESEARCH FINDINGS
+{reports_block}{facts_section}
 ---
 
-Write a CEO-level executive summary of 300-400 words. Structure it as follows:
+Write the unified analyst report with these sections:
 
-**Overall Verdict** (2-3 sentences): Is this company financially healthy, at risk, or in crisis?
+# {dataset.company_name} — Financial & Strategic Analysis
 
-**Top 3 Strengths**
-- Strength 1
-- Strength 2
-- Strength 3
+## Executive Summary
+3-4 sentences. Overall financial health, key verdict, one critical risk.
 
-**Top 3 Risks**
-- Risk 1
-- Risk 2
-- Risk 3
+## Financial Performance
+Revenue, profitability margins, EBIT, net income. Year-over-year trends. \
+Use exact figures from the verified facts table wherever available. \
+Write [gap] for any metric not confirmed in the source data.
 
-**Single Most Critical Action** (1-2 sentences): The one thing leadership must do immediately.
+## Balance Sheet & Liquidity
+Asset base, debt structure, equity ratio, liquidity position.
 
-Be precise, use numbers from the reports wherever possible, and write for a board-level audience.
+## Operational Highlights
+Workforce, key projects, capacity utilisation, operational risks.
+
+## Compliance & Governance
+Regulatory status, audit findings, key compliance risks.
+
+## Strategic Outlook
+Top 2 opportunities. Top 2 risks. Single most important action for leadership.
+
+Rules:
+- Every number must come from the verified facts table or the department findings. \
+Never invent a figure. Write [gap] if data is absent.
+- Do not mention departments, rooms, or the analysis pipeline.
+- Write for a bank credit committee or board — precise, direct, no filler.
+- Target 600-900 words total.
 """
 
         log.info(
-            "CEO.final_synthesis: synthesising %d room reports for company=%r",
-            len(room_reports),
-            dataset.company_name,
+            "CEO.final_synthesis: writing unified report for company=%r (%d dept reports)",
+            dataset.company_name, len(dept_reports),
         )
         synthesis = await _llm.narrate(prompt)
-        log.info("CEO synthesis complete: %d chars", len(synthesis))
+        log.info("CEO unified report complete: %d chars", len(synthesis))
         return synthesis
 
     # ------------------------------------------------------------------

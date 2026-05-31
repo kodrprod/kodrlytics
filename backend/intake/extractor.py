@@ -159,7 +159,82 @@ async def _extract_from_zip(filename: str, content: bytes,
         log.warning("ZIP extraction: reconciliation failed attempt %d (%d errors)",
                     attempt + 1, len(recon.errors))
 
-    return ExtractionResult(_build_financials(last_raw), last_recon, llm_calls, last_raw)
+    final = ExtractionResult(_build_financials(last_raw), last_recon, llm_calls, last_raw)
+    return await _spot_check(document_text, final)
+
+
+async def _spot_check(document_text: str, result: "ExtractionResult") -> "ExtractionResult":
+    """
+    After extraction, ask the same model to verify its top numbers against the
+    source document. If the most recent revenue diverges by more than 1.5%,
+    re-extract once with a correction hint embedded in the prompt.
+    """
+    fin = result.financials
+    if not fin.income_statement.periods:
+        return result
+
+    years = sorted(fin.income_statement.revenue.keys(), reverse=True)
+    if not years:
+        return result
+    year = years[0]
+    rev = fin.income_statement.revenue.get(year)
+    ebit = fin.income_statement.ebit.get(year)
+    if not rev:
+        return result
+
+    ebit_line = f"- EBIT: EUR {ebit:,.2f}" if ebit else "- EBIT: (not extracted)"
+    verify_prompt = f"""The following figures were just extracted from the document for year {year}:
+- Revenue: EUR {rev:,.2f}
+{ebit_line}
+
+Read the source document and find the actual revenue and EBIT for {year}.
+Return JSON only:
+{{
+  "revenue": <actual number as float, or null if not found>,
+  "ebit":    <actual number as float, or null if not found>,
+  "confirmed": true or false
+}}
+
+Source document:
+---
+{document_text[:15000]}
+---"""
+
+    try:
+        check = await router.extract(verify_prompt, {
+            "type": "object",
+            "properties": {
+                "revenue":   {"type": ["number", "null"]},
+                "ebit":      {"type": ["number", "null"]},
+                "confirmed": {"type": "boolean"},
+            },
+            "required": ["confirmed"],
+        })
+
+        doc_rev = check.get("revenue")
+        if doc_rev and abs(doc_rev - rev) / max(abs(rev), 1) > 0.015:
+            log.warning(
+                "Spot-check: revenue divergence %.1f%% "
+                "(extracted=EUR %.0f, document=EUR %.0f) — re-extracting with correction",
+                abs(doc_rev - rev) / rev * 100, rev, doc_rev,
+            )
+            hint = (
+                f"\n\nCORRECTION: The revenue for {year} is EUR {doc_rev:,.2f}. "
+                "Use this exact value — do not derive it from journal entries."
+            )
+            corrected = _build_extraction_prompt(document_text + hint)
+            raw2 = await router.extract(corrected, EXTRACTION_SCHEMA)
+            fin2 = _build_financials(raw2)
+            recon2 = reconcile(fin2)
+            log.info("Spot-check re-extraction complete. Revenue now: %s",
+                     fin2.income_statement.revenue.get(year))
+            return ExtractionResult(fin2, recon2, result.llm_calls + 2, raw2)
+
+        log.info("Spot-check: revenue confirmed EUR %.0f for %s", rev, year)
+    except Exception as e:
+        log.warning("Spot-check failed (non-fatal): %s", e)
+
+    return result
 
 
 def _gap_extraction_result(company_name: str, nace_code: str = "C") -> "ExtractionResult":
