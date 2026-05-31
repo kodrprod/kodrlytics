@@ -90,7 +90,13 @@ document_text = parsers.parse_document(filename, content)
 
 With no real financial data visible, the LLM hallucinated internally consistent but entirely fictional financials. Because temperature was 0.3–0.4 and there were 120 workers operating in 4 independent rounds with no shared canonical store, each worker independently invented different revenue figures. EUR 4.2M appeared in workers that also received the annual report PDF (correctly parsed via `parse_pdf()`), while EUR 9.4M, 50M, and 60,552.78 were fabricated by workers that received only the garbage ZIP text.
 
-**Proof**: `ingest_zip()` (the fix) correctly extracts EUR 4.2M from `Jahresbericht_2024.pdf` parsing. The three other values are unreachable from any parsed document content.
+**Tertiary cause — 12,000-char extraction window**:
+
+Even if ZIP ingestion is fixed, a second truncation problem exists: `_build_extraction_prompt()` passes only `document_text[:12000]` to the LLM. The MuellerBau dataset produces 90,190 chars of structured text across 45 sections. Only the first 12,000 characters fit — covering years **2010–2015 only**. Years 2016–2024 (including the actual EUR 4.2M 2024 revenue) are invisible to the extraction LLM. An LLM seeing only 2010–2015 journal entries and asked to extract "2024 revenue" will either return null or hallucinate a value by projecting from the visible years.
+
+Account 4000 (Erlöse Ingenieurleistungen) sums for 2024 total only EUR 250,800.83 (18 journal entries) — 6% of the EUR 4.2M annual revenue. The remaining 94% flows through the invoicing system, not account 4000. An extraction from a partial journal view produces a radically understated revenue figure, which then gets "corrected upward" by the LLM during extraction to a plausible-sounding round number.
+
+**Proof**: `ingest_zip()` (the fix) correctly extracts EUR 4.2M from `Jahresbericht_2024.pdf` parsing. The three other values are unreachable from any parsed document content. Full account-4000 journal search across all 15 years and 2,300+ rows confirms neither EUR 9.4M, 50M, nor 60,552.78 appear in any source document.
 
 **Secondary cause**: The extraction prompt defaulted NACE to `"C"` (manufacturing):
 ```python
@@ -269,10 +275,38 @@ def _parse_file(name: str, data: bytes) -> str:
 | 6 | Extraction prompt NACE default `"C"` (manufacturing) instead of `"F"` (construction) | `extractor.py:26` (pre-refactor) | Wrong benchmark context for all workers |
 | 7 | No benchmark data for NACE F in `BenchmarkStore`, no explicit `[gap]` instruction | `benchmark/store.py`, `agents/rooms.py` | Compliance cost EUR 1.2M fabricated from peer benchmarks |
 | 8 | Payroll journals excluded from LLM extraction prompt | `extractor.py` (pre-refactor, `annual_report_consolidated()` only) | Salary EUR 45,453.02 hallucinated |
+| 9 | Extraction prompt truncated at 12,000 chars — MuellerBau dataset is 90,190 chars; only years 2010–2015 visible | `extractor.py` `_build_extraction_prompt()` line 36 | 2016–2024 financials invisible to extractor; 2024 revenue unreachable without annual report PDF |
 
 ---
 
-## 5. Confirmed Non-Hallucinated Values
+## 5. Account 4000 (Erlöse Ingenieurleistungen) — Annual Journal Totals
+
+Account 4000 is the engineering-services revenue sub-ledger. It does NOT equal total company revenue; it is one posting stream within the overall revenue figure.
+
+| Year | Entries | Account 4000 Haben Total | Annual Report Revenue |
+|------|---------|--------------------------|----------------------|
+| 2010 | 13 | EUR 170,729 | — |
+| 2011 | 21 | EUR 306,461 | — |
+| 2012 | 16 | EUR 187,923 | — |
+| 2013 | 25 | EUR 314,539 | — |
+| 2014 | 21 | EUR 254,511 | — |
+| 2015 | 18 | EUR 290,543 | — |
+| 2016 | 22 | EUR 266,092 | — |
+| 2017 | 23 | EUR 265,661 | — |
+| 2018 | 20 | EUR 190,090 | — |
+| 2019 | 26 | EUR 324,831 | — |
+| 2020 | 22 | EUR 291,581 | — |
+| 2021 | 25 | EUR 268,404 | — |
+| 2022 | 24 | EUR 284,511 | EUR 3,550,000 |
+| 2023 | 8 | EUR 102,424 | EUR 3,820,000 |
+| 2024 | 18 | EUR 250,801 | EUR 4,200,000 ✓ |
+| **Total 15yr** | **302** | **EUR 3,769,100** | — |
+
+The 2024 account-4000 total (EUR 250,801) is only 6% of the annual report revenue (EUR 4,200,000). An LLM that extracts from a partial journal view — without seeing the annual report PDF — will produce a severely understated revenue figure and then "round" it to a plausible magnitude, producing hallucinated values.
+
+---
+
+## 6. Confirmed Non-Hallucinated Values
 
 These values appear in source documents and would have been correctly available if the ZIP ingestion bug had not poisoned the extraction:
 
