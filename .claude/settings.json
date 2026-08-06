@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "apple-skills": {
+      "source": {
+        "source": "github",
+        "repo": "Prisma-Labs-Dev/apple-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "apple-skills@apple-skills": true
+  }
+}
